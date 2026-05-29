@@ -1,0 +1,12 @@
+{
+	"name": "comrak-wasm-shiki-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node index.ts && open output.html"
+	},
+	"dependencies": {
+		"@typefm/comrak-wasm": "file:../..",
+		"shiki": "^4.0.2"
+	}
+}

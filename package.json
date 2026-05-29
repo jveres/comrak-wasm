@@ -1,0 +1,59 @@
+{
+	"name": "@typefm/comrak-wasm",
+	"version": "0.2.1",
+	"description": "WebAssembly bindings for comrak — a fast CommonMark + GFM Markdown parser and renderer",
+	"license": "MIT",
+	"type": "module",
+	"main": "pkg/comrak.js",
+	"types": "types.d.ts",
+	"bin": {
+		"comrak-wasm": "examples/md.mjs"
+	},
+	"files": [
+		"pkg/",
+		"examples/md.mjs",
+		"types.d.ts",
+		"LICENSE",
+		"README.md"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/jveres/typefm"
+	},
+	"homepage": "https://github.com/jveres/typefm",
+	"keywords": [
+		"markdown",
+		"commonmark",
+		"gfm",
+		"parser",
+		"renderer",
+		"wasm",
+		"comrak",
+		"html",
+		"ansi"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"prepack": "npm run build",
+		"build": "cargo build --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-name comrak --out-dir pkg ../../target/wasm32-unknown-unknown/release/comrak_wasm.wasm && mv pkg/comrak_bg.wasm pkg/comrak.wasm && mv pkg/comrak_bg.wasm.d.ts pkg/comrak.wasm.d.ts && sed -i '' 's/comrak_bg\\.wasm/comrak.wasm/g' pkg/comrak.js pkg/comrak.d.ts pkg/comrak.wasm.d.ts",
+		"check": "biome check .",
+		"check:fix": "biome check --write .",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"shiki": "cd examples/shiki && npm install && npm start",
+		"dev": "vite examples/playground",
+		"md": "node examples/md.mjs"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.10",
+		"@types/node": "^25.5.2",
+		"@vitest/coverage-v8": "^4.1.2",
+		"katex": "^0.16.45",
+		"shiki": "^4.0.2",
+		"typescript": "^6.0.2",
+		"vite": "^8.0.5",
+		"vitest": "^4.1.2"
+	}
+}

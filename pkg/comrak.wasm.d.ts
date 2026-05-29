@@ -1,0 +1,30 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_codefencerenderer_free: (a: number, b: number) => void;
+export const __wbg_headingadapter_free: (a: number, b: number) => void;
+export const __wbg_syntaxhighlighter_free: (a: number, b: number) => void;
+export const ansiThemeAuto: (a: number, b: number) => number;
+export const ansiThemeDark: () => number;
+export const ansiThemeLight: () => number;
+export const codefencerenderer_new: (a: number) => number;
+export const comrakVersion: (a: number) => void;
+export const detectColorScheme: (a: number, b: number, c: number) => void;
+export const getFrontmatter: (a: number, b: number, c: number, d: number) => void;
+export const headingadapter_new: (a: number, b: number) => number;
+export const healMarkdown: (a: number, b: number, c: number) => void;
+export const mdToAnsi: (a: number, b: number, c: number, d: number, e: number) => void;
+export const mdToCommonmark: (a: number, b: number, c: number, d: number) => void;
+export const mdToHtml: (a: number, b: number, c: number, d: number) => void;
+export const mdToHtmlWithCodefenceRenderers: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+export const mdToHtmlWithPlugins: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const mdToHtmlWithRewriters: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const mdToText: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+export const mdToXml: (a: number, b: number, c: number, d: number) => void;
+export const mdToXmlWithPlugins: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const syntaxhighlighter_new: (a: number, b: number, c: number) => number;
+export const __wbindgen_export: (a: number, b: number) => number;
+export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_export3: (a: number) => void;
+export const __wbindgen_add_to_stack_pointer: (a: number) => number;
+export const __wbindgen_export4: (a: number, b: number, c: number) => void;

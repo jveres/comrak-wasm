@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Rust build output
+target/
+Cargo.lock
+
+# Vite / build output
+dist/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# OS / editor
+.DS_Store
+*.log

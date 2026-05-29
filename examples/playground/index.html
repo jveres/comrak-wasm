@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>comrak-wasm playground</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css"
+    />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --bg-secondary: #f6f8fa;
+        --fg: #1f2328;
+        --fg-muted: #656d76;
+        --border: #d0d7de;
+        --code-bg: #eff1f3;
+        --th-bg: #f6f8fa;
+        --alert-bg: #ddf4ff;
+        --alert-border: #0969da;
+        --quote-border: #d0d7de;
+        --quote-fg: #656d76;
+        --input-bg: white;
+      }
+      [data-theme="dark"] {
+        --bg: #0d1117;
+        --bg-secondary: #161b22;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --border: #30363d;
+        --code-bg: #1c2128;
+        --th-bg: #161b22;
+        --alert-bg: #121d2f;
+        --alert-border: #388bfd;
+        --quote-border: #30363d;
+        --quote-fg: #8b949e;
+        --input-bg: #0d1117;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+          sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+        line-height: 1.6;
+      }
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto 1fr auto;
+        height: 100vh;
+        overflow: hidden;
+      }
+      .toolbar {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 1rem;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+      }
+      .toolbar h1 {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-right: auto;
+      }
+      .toolbar select {
+        padding: 0.25rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 0.8rem;
+        background: var(--input-bg);
+        color: var(--fg);
+      }
+      .toolbar label {
+        font-size: 0.8rem;
+        color: var(--fg-muted);
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+      .pane-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 1rem;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--fg-muted);
+      }
+      .pane-header-left {
+        border-right: 1px solid var(--border);
+      }
+      .format-opts {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-left: auto;
+      }
+      .format-opts select {
+        padding: 0.1rem 0.3rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-size: 0.7rem;
+        background: var(--input-bg);
+        color: var(--fg);
+      }
+      .format-opts label {
+        font-size: 0.7rem;
+        color: var(--fg-muted);
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+        font-weight: normal;
+      }
+      .pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+      textarea {
+        flex: 1;
+        padding: 1rem;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 0.85rem;
+        border: none;
+        resize: none;
+        outline: none;
+        border-right: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+      }
+      #output {
+        flex: 1;
+        overflow: auto;
+        background: var(--bg);
+      }
+      #output.preview {
+        padding: 1rem 2rem;
+        overflow-x: auto;
+      }
+      #output.source {
+        padding: 1rem;
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 0.85rem;
+        white-space: pre;
+      }
+      #output.ansi {
+        padding: 1rem;
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 0.85rem;
+        white-space: pre;
+      }
+      #output.preview h1,
+      #output.preview h2,
+      #output.preview h3 {
+        margin-top: 1.2em;
+        margin-bottom: 0.4em;
+      }
+      #output.preview p {
+        margin-bottom: 0.8em;
+      }
+      #output.preview pre {
+        margin: 1em 0;
+        border-radius: 6px;
+        overflow-x: auto;
+      }
+      #output.preview code {
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 0.9em;
+      }
+      #output.preview :not(pre) > code {
+        background: var(--code-bg);
+        padding: 0.15em 0.4em;
+        border-radius: 4px;
+      }
+      #output.preview table {
+        border-collapse: collapse;
+        margin: 1em 0;
+        white-space: nowrap;
+      }
+      #output.preview th,
+      #output.preview td {
+        border: 1px solid var(--border);
+        padding: 6px 13px;
+        background: var(--bg);
+      }
+      #output.preview th {
+        background: var(--th-bg);
+      }
+      #output.preview ul,
+      #output.preview ol {
+        padding-left: 2em;
+        margin-bottom: 0.8em;
+      }
+      #output.preview li {
+        margin-bottom: 0.25em;
+      }
+      #output.preview li > ul,
+      #output.preview li > ol {
+        margin-top: 0.25em;
+        margin-bottom: 0;
+      }
+      #output.preview dl {
+        margin: 1em 0;
+      }
+      #output.preview dt {
+        font-weight: 600;
+        margin-top: 0.5em;
+      }
+      #output.preview dd {
+        margin-left: 2em;
+        color: var(--fg-muted);
+      }
+      #output.preview blockquote {
+        border-left: 4px solid var(--quote-border);
+        padding-left: 1em;
+        margin: 1em 0;
+        color: var(--quote-fg);
+      }
+      #output.preview .markdown-alert {
+        padding: 0.5em 1em;
+        border-radius: 4px;
+        margin: 1em 0;
+      }
+      #output.preview .markdown-alert-title {
+        font-weight: 600;
+      }
+      #output.preview .markdown-alert-note {
+        border-left: 4px solid #4493f8;
+        background: #121d2f;
+      }
+      #output.preview .markdown-alert-tip {
+        border-left: 4px solid #3fb950;
+        background: #12261e;
+      }
+      #output.preview .markdown-alert-important {
+        border-left: 4px solid #ab7df8;
+        background: #1b1533;
+      }
+      #output.preview .markdown-alert-warning {
+        border-left: 4px solid #d29922;
+        background: #272115;
+      }
+      #output.preview .markdown-alert-caution {
+        border-left: 4px solid #f85149;
+        background: #2d1215;
+      }
+      :root #output.preview .markdown-alert-note {
+        border-left-color: #0969da;
+        background: #ddf4ff;
+      }
+      :root #output.preview .markdown-alert-tip {
+        border-left-color: #1a7f37;
+        background: #dafbe1;
+      }
+      :root #output.preview .markdown-alert-important {
+        border-left-color: #8250df;
+        background: #fbefff;
+      }
+      :root #output.preview .markdown-alert-warning {
+        border-left-color: #9a6700;
+        background: #fff8c5;
+      }
+      :root #output.preview .markdown-alert-caution {
+        border-left-color: #cf222e;
+        background: #ffebe9;
+      }
+      [data-theme="dark"] #output.preview .markdown-alert-note {
+        border-left-color: #4493f8;
+        background: #121d2f;
+      }
+      [data-theme="dark"] #output.preview .markdown-alert-tip {
+        border-left-color: #3fb950;
+        background: #12261e;
+      }
+      [data-theme="dark"] #output.preview .markdown-alert-important {
+        border-left-color: #ab7df8;
+        background: #1b1533;
+      }
+      [data-theme="dark"] #output.preview .markdown-alert-warning {
+        border-left-color: #d29922;
+        background: #272115;
+      }
+      [data-theme="dark"] #output.preview .markdown-alert-caution {
+        border-left-color: #f85149;
+        background: #2d1215;
+      }
+      #output.preview img {
+        max-width: 100%;
+      }
+      #output.preview a {
+        color: var(--alert-border);
+      }
+      #output.preview .spoiler {
+        background: var(--fg);
+        color: var(--fg);
+        cursor: pointer;
+        border-radius: 3px;
+        padding: 0 0.2em;
+        transition: background 0.3s;
+      }
+      #output.preview .spoiler:hover {
+        background: var(--code-bg);
+      }
+      .statusbar {
+        grid-column: 1 / -1;
+        padding: 0.25rem 1rem;
+        font-size: 0.7rem;
+        color: var(--fg-muted);
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <div class="toolbar">
+        <h1>@typefm/comrak-wasm playground</h1>
+        <select id="format">
+          <option value="preview">HTML (preview)</option>
+          <option value="html">HTML (source)</option>
+          <option value="commonmark">CommonMark</option>
+          <option value="xml">XML</option>
+          <option value="text">Text</option>
+          <option value="ansi">ANSI</option>
+        </select>
+        <label><input type="checkbox" id="heal" /> heal</label>
+        <label><input type="checkbox" id="unsafe" checked /> unsafe html</label>
+        <label><input type="checkbox" id="gfm" checked /> GFM</label>
+        <label><input type="checkbox" id="shiki" checked /> Shiki</label>
+        <label><input type="checkbox" id="katex" checked /> KaTeX</label>
+        <select id="theme">
+          <option value="system">system</option>
+          <option value="light">light</option>
+          <option value="dark">dark</option>
+        </select>
+      </div>
+      <div class="pane-header pane-header-left">Markdown</div>
+      <div class="pane-header">
+        <span id="output-label">Output</span>
+        <div class="format-opts" id="formatOptions" style="display: none">
+          <label
+            ><input type="checkbox" id="showMarkdown" /> show markdown</label
+          >
+          <label
+            ><input type="checkbox" id="showUrls" checked /> show URLs</label
+          >
+          <label
+            ><input type="checkbox" id="tableShadow" checked /> table
+            shadow</label
+          >
+        </div>
+      </div>
+      <div class="pane">
+        <textarea id="input">
+---
+title: "@typefm/comrak-wasm playground"
+description: WebAssembly bindings for comrak
+---
+
+# @typefm/comrak-wasm playground
+
+Renders markdown using **comrak** 0.51 compiled to WebAssembly — supporting
+*seven output formats* from a single parse.
+
+## Output Formats
+
+| **Format**   | **Target** |       **Use Case** |
+| :----------- | :--------: | -----------------: |
+| HTML         |  Browser   |     Rich rendering |
+| CommonMark   |  Markdown  |    Normalization   |
+| XML          |  Tooling   |     AST inspection |
+| Typst        |  Print     |     Typesetting    |
+| Text         |  Terminal  |   Plain extraction |
+| ANSI         |  Terminal  |     Styled output  |
+
+Tables support *inline formatting*:
+
+| **Feature** | **Syntax** | **Example** |
+|-------------|------------|-------------|
+| Bold | `**text**` | **bold text** |
+| Italic | `*text*` | *italic text* |
+| Code | `` `code` `` | `inline code` |
+| Strike | `~~text~~` | ~~struck~~ |
+| Link | `[t](url)` | [docs](https://docs.rs) |
+
+## Code Examples
+
+```typescript
+import init, { mdToHtml, mdToAnsi } from "@typefm/comrak-wasm";
+
+await init();
+
+// Render to HTML with GFM extensions
+const html = mdToHtml(markdown, {
+  extension: { table: true, tasklist: true, alerts: true },
+  render: { unsafe: true },
+});
+
+// Render to ANSI with custom theme
+const ansi = mdToAnsi(markdown, opts, { showMarkdown: false });
+```
+
+```rust
+fn main() {
+    let options = Options::default();
+    let html = markdown_to_html("# Hello", &options);
+    println!("{html}");
+}
+```
+
+## Inline Formatting
+
+Regular text with **bold**, *italic*, ~~strikethrough~~, and `inline code`.
+Combine them: ***bold italic***, **bold with `code` inside**.
+Also: H~2~O (subscript), x^2^ (superscript), ==highlighted==,
+++inserted++, ||spoiler text||, and __underlined__.
+
+## Task Lists
+
+- [x] HTML rendering with Shiki syntax highlighting
+- [x] Text and ANSI output with box-drawing tables
+- [x] Configurable ANSI themes (dark/light)
+- [ ] JSON AST output
+- [ ] Streaming renderer
+
+## Nested Lists
+
+1. First item
+   - Sub-item A
+   - Sub-item B
+     - Deep nested
+2. Second item
+   1. Ordered sub-item
+   2. Another one
+
+## Blockquotes
+
+> Markdown is intended to be as easy-to-read and easy-to-write
+> as is feasible.
+>
+> — *John Gruber*
+
+## Alerts
+
+> [!NOTE]
+> This playground runs entirely in the browser — no server needed.
+
+> [!TIP]
+> Try switching between output formats using the dropdown above.
+
+> [!WARNING]
+> The `unsafe` option must be enabled to render raw HTML.
+
+> [!IMPORTANT]
+> All comrak extension options are available via the options object.
+
+> [!CAUTION]
+> Disabling `showMarkdown` strips all structural markers from the output.
+
+## Math
+
+Inline math: $E = mc^2$ and display math:
+
+$$
+\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+$$
+
+Chemistry with mhchem: $\ce{H2O}$, $\ce{CO2}$, and:
+
+$$
+\ce{2H2 + O2 -> 2H2O}
+$$
+
+## Links and Images
+
+Visit the [comrak repository](https://github.com/kivikakk/comrak) or
+check the [API docs](https://docs.rs/comrak).
+Autolinked URL: https://github.com/jveres/comrak-wasm
+
+![Placeholder image](https://placehold.co/600x200/e2e8f0/64748b?text=comrak-wasm+playground)
+
+## Footnotes
+
+CommonMark with footnotes[^1] and multiple references[^2].
+
+[^1]: This is the first footnote.
+[^2]: And the second one with **formatting**.
+
+## Description Lists
+
+comrak
+: A fast CommonMark + GFM Markdown parser written in Rust.
+
+wasm-bindgen
+: A tool for facilitating communication between WASM and JavaScript.
+
+## Wiki Links
+
+Link to [[another page]] or [[target|custom title]].
+
+## Shortcodes
+
+Emoji shortcodes: :rocket: :star: :wave:
+
+## Multiline Block Quotes
+
+>>>
+This is a multiline block quote.
+
+It can span multiple paragraphs without `>` on each line.
+>>>
+
+---
+
+*Built with* `comrak` 0.51 *+* `wasm-bindgen`
+</textarea
+        >
+      </div>
+      <div class="pane">
+        <div id="output" class="preview"></div>
+      </div>
+      <div class="statusbar">
+        <span id="status">Loading...</span>
+        <span id="version"></span>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
