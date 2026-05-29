@@ -172,20 +172,50 @@ function ansiToHtml(text: string): string {
 	let spanOpen = false;
 
 	const fgMap: Record<number, string> = {
-		30: "#636c76", 31: "#f85149", 32: "#3fb950", 33: "#d29922",
-		34: "#58a6ff", 35: "#bc8cff", 36: "#39c5cf", 37: "#b1bac4",
-		90: "#636c76", 91: "#ff7b72", 92: "#7ee787", 93: "#e3b341",
-		94: "#79c0ff", 95: "#d2a8ff", 96: "#56d4dd", 97: "#f0f6fc",
+		30: "#636c76",
+		31: "#f85149",
+		32: "#3fb950",
+		33: "#d29922",
+		34: "#58a6ff",
+		35: "#bc8cff",
+		36: "#39c5cf",
+		37: "#b1bac4",
+		90: "#636c76",
+		91: "#ff7b72",
+		92: "#7ee787",
+		93: "#e3b341",
+		94: "#79c0ff",
+		95: "#d2a8ff",
+		96: "#56d4dd",
+		97: "#f0f6fc",
 	};
 	const bgMap: Record<number, string> = {
-		41: "#f85149", 42: "#3fb950", 43: "#d29922",
-		44: "#58a6ff", 45: "#bc8cff", 47: "#d0d7de",
+		41: "#f85149",
+		42: "#3fb950",
+		43: "#d29922",
+		44: "#58a6ff",
+		45: "#bc8cff",
+		47: "#d0d7de",
 	};
 
 	function color256(n: number): string {
 		const std = [
-			"#000","#800000","#008000","#808000","#000080","#800080","#008080","#c0c0c0",
-			"#808080","#f00","#0f0","#ff0","#00f","#f0f","#0ff","#fff",
+			"#000",
+			"#800000",
+			"#008000",
+			"#808000",
+			"#000080",
+			"#800080",
+			"#008080",
+			"#c0c0c0",
+			"#808080",
+			"#f00",
+			"#0f0",
+			"#ff0",
+			"#00f",
+			"#f0f",
+			"#0ff",
+			"#fff",
 		];
 		if (n < 16) return std[n];
 		if (n < 232) {
@@ -200,7 +230,10 @@ function ansiToHtml(text: string): string {
 	}
 
 	function emitSpan(out: string[]): void {
-		if (spanOpen) { out.push("</span>"); spanOpen = false; }
+		if (spanOpen) {
+			out.push("</span>");
+			spanOpen = false;
+		}
 		const s: string[] = [];
 		if (bold) s.push("font-weight:bold");
 		if (dim) s.push("opacity:0.6");
@@ -212,30 +245,48 @@ function ansiToHtml(text: string): string {
 		if (fg) s.push(`color:${fg}`);
 		if (bg && bgPad) s.push(`background:${bg};padding:1px 4px`);
 		else if (bg) s.push(`background:${bg};border-radius:3px`);
-		if (s.length) { out.push(`<span style="${s.join(";")}">`); spanOpen = true; }
+		if (s.length) {
+			out.push(`<span style="${s.join(";")}">`);
+			spanOpen = true;
+		}
 	}
 
 	function processSGR(codes: number[], out: string[]): void {
 		let j = 0;
 		while (j < codes.length) {
 			const c = codes[j];
-			if (c === 0) { bold = dim = italic = underline = strike = false; fg = bg = ""; bgPad = false; }
-			else if (c === 1) bold = true;
+			if (c === 0) {
+				bold = dim = italic = underline = strike = false;
+				fg = bg = "";
+				bgPad = false;
+			} else if (c === 1) bold = true;
 			else if (c === 2) dim = true;
 			else if (c === 3) italic = true;
 			else if (c === 4) underline = true;
 			else if (c === 9) strike = true;
-			else if (c === 22) { bold = false; dim = false; }
-			else if (c === 23) italic = false;
+			else if (c === 22) {
+				bold = false;
+				dim = false;
+			} else if (c === 23) italic = false;
 			else if (c === 24) underline = false;
 			else if (c === 29) strike = false;
 			else if (c === 39) fg = "";
-			else if (c === 49) { bg = ""; bgPad = false; }
-			else if (c >= 30 && c <= 37) fg = fgMap[c] ?? "";
+			else if (c === 49) {
+				bg = "";
+				bgPad = false;
+			} else if (c >= 30 && c <= 37) fg = fgMap[c] ?? "";
 			else if (c >= 90 && c <= 97) fg = fgMap[c] ?? "";
-			else if (c >= 40 && c <= 47) { bg = bgMap[c] ?? ""; bgPad = true; }
-			else if (c === 38 && codes[j + 1] === 5 && j + 2 < codes.length) { fg = color256(codes[j + 2]); j += 2; }
-			else if (c === 48 && codes[j + 1] === 5 && j + 2 < codes.length) { bg = color256(codes[j + 2]); bgPad = false; j += 2; }
+			else if (c >= 40 && c <= 47) {
+				bg = bgMap[c] ?? "";
+				bgPad = true;
+			} else if (c === 38 && codes[j + 1] === 5 && j + 2 < codes.length) {
+				fg = color256(codes[j + 2]);
+				j += 2;
+			} else if (c === 48 && codes[j + 1] === 5 && j + 2 < codes.length) {
+				bg = color256(codes[j + 2]);
+				bgPad = false;
+				j += 2;
+			}
 			j++;
 		}
 		emitSpan(out);
@@ -248,7 +299,10 @@ function ansiToHtml(text: string): string {
 		if (text[i] === "\x1b" && text[i + 1] === "[") {
 			const end = text.indexOf("m", i + 2);
 			if (end !== -1) {
-				const codes = text.slice(i + 2, end).split(";").map(Number);
+				const codes = text
+					.slice(i + 2, end)
+					.split(";")
+					.map(Number);
 				processSGR(codes, out);
 				i = end + 1;
 				continue;
@@ -257,7 +311,10 @@ function ansiToHtml(text: string): string {
 		// OSC 8 hyperlinks: \x1b]8;;url\x1b\ — skip the sequence
 		if (text[i] === "\x1b" && text[i + 1] === "]") {
 			const st = text.indexOf("\x1b\\", i + 2);
-			if (st !== -1) { i = st + 2; continue; }
+			if (st !== -1) {
+				i = st + 2;
+				continue;
+			}
 		}
 		if (text[i] === "<") out.push("&lt;");
 		else if (text[i] === ">") out.push("&gt;");

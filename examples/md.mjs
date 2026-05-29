@@ -2,7 +2,13 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { initSync, mdToAnsi, mdToText, ansiThemeDark, ansiThemeLight } from "../pkg/comrak.js";
+import {
+	ansiThemeDark,
+	ansiThemeLight,
+	initSync,
+	mdToAnsi,
+	mdToText,
+} from "../pkg/comrak.js";
 
 const require = createRequire(import.meta.url);
 const wasmPath = require.resolve("../pkg/comrak.wasm");
@@ -89,5 +95,7 @@ if (format === "text") {
 	console.log(mdToText(md, opts, true, showMarkdown, shadow));
 } else {
 	const base = theme === "light" ? ansiThemeLight() : ansiThemeDark();
-	console.log(mdToAnsi(md, opts, { ...base, showMarkdown, tableShadow: shadow }));
+	console.log(
+		mdToAnsi(md, opts, { ...base, showMarkdown, tableShadow: shadow }),
+	);
 }

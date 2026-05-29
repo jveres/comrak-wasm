@@ -672,17 +672,17 @@ describe("text", () => {
 	});
 
 	test("text and ansi match for list with code block", () => {
-		const md =
-			"- Item one\n\n        code inside\n\n- Item two\n- Item three";
+		const md = "- Item one\n\n        code inside\n\n- Item two\n- Item three";
 		const text = mdToText(md, {});
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escape codes for text comparison
 		const ansi = mdToAnsi(md, {}).replace(/\x1b\[[0-9;]*m/g, "");
 		expect(ansi).toBe(text);
 	});
 
 	test("text and ansi match for nested list with code block", () => {
-		const md =
-			"- Item\n    - Sub-item\n\n            nested_code()\n\n- Next";
+		const md = "- Item\n    - Sub-item\n\n            nested_code()\n\n- Next";
 		const text = mdToText(md, {});
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escape codes for text comparison
 		const ansi = mdToAnsi(md, {}).replace(/\x1b\[[0-9;]*m/g, "");
 		expect(ansi).toBe(text);
 	});
@@ -972,7 +972,9 @@ describe("heal", () => {
 	});
 
 	test("handles ZWSP (U+200B) without crashing", () => {
-		expect(healMarkdown("Text\u200Bwith\u200BZWSP")).toBe("Text\u200Bwith\u200BZWSP");
+		expect(healMarkdown("Text\u200Bwith\u200BZWSP")).toBe(
+			"Text\u200Bwith\u200BZWSP",
+		);
 	});
 
 	test("handles ZWSP with unclosed bold", () => {

@@ -10,11 +10,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import {
-	initSync,
-	mdToHtmlWithPlugins,
-	SyntaxHighlighter,
-} from "comrak-wasm";
+import { initSync, mdToHtmlWithPlugins, SyntaxHighlighter } from "comrak-wasm";
 import { createHighlighter } from "shiki";
 
 // --- Init WASM ---
