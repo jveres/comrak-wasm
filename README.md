@@ -2,13 +2,17 @@
 
 WebAssembly bindings for [comrak](https://github.com/kivikakk/comrak) — a fast CommonMark + GFM compatible Markdown parser and renderer.
 
-Single ~900KB WASM binary. Runs in browsers, Node.js, Deno, Bun, and edge runtimes.
+Single ~950KB WASM binary. Runs in browsers, Node.js, Deno, Bun, and edge runtimes.
 
 ## Install
 
+This package is not published to npm. Install it directly from GitHub — the built WASM is committed, so no build step is required on install:
+
 ```bash
-npm install comrak-wasm
+npm install github:jveres/comrak-wasm
 ```
+
+Or clone the repo and build it yourself (see [Development](#development)).
 
 ## Usage
 
@@ -253,33 +257,29 @@ Handles: code fences, bold, italic, strikethrough, inline code, links/images, Ka
 
 ## CLI
 
-Render markdown in the terminal via `npx`:
+A small CLI example lives in [`examples/md.mjs`](examples/md.mjs). After cloning and building (`npm run build`), render markdown in the terminal:
 
 ````bash
 # ANSI colored output (default)
-npx comrak-wasm README.md
+node examples/md.mjs README.md
 
 # Plain text output
-npx comrak-wasm --text README.md
+node examples/md.mjs --text README.md
 
 # Show markdown markers (#, ```, **, etc.)
-npx comrak-wasm --markdown README.md
+node examples/md.mjs --markdown README.md
 
 # Disable table shadow
-npx comrak-wasm --no-shadow README.md
+node examples/md.mjs --no-shadow README.md
 
 # Read from stdin
-echo "# Hello **world**" | npx comrak-wasm -
+echo "# Hello **world**" | node examples/md.mjs -
 
 # Combine options
-npx comrak-wasm -t -m --no-shadow README.md
+node examples/md.mjs -t -m --no-shadow README.md
 ````
 
-Or if installed globally / in a project, use the `comrak-wasm` command directly:
-
-```bash
-comrak-wasm README.md
-```
+Or via the npm script: `npm run md -- README.md`.
 
 ## Playground
 
@@ -308,7 +308,7 @@ npm run typecheck
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) with `wasm32-unknown-unknown` target
-- [wasm-bindgen-cli](https://rustwasm.github.io/wasm-bindgen/)
+- [wasm-bindgen-cli](https://rustwasm.github.io/wasm-bindgen/) — its version must match the `wasm-bindgen` crate version
 - Node.js 22+
 
 ## License
