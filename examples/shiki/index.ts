@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { initSync, mdToHtmlWithPlugins, SyntaxHighlighter } from "comrak-wasm";
 import { createHighlighter } from "shiki";
+import { createShikiAdapter } from "../shared/shiki-adapter.ts";
 
 // --- Init WASM ---
 
@@ -71,33 +72,11 @@ const html = mdToHtmlWithPlugins(
 		extension: { headerIds: "", alerts: true },
 		render: { unsafe: true },
 	},
-	new SyntaxHighlighter(
-		(code: string, lang: string | undefined) => {
-			if (!lang) return code;
-			try {
-				const highlighted = shiki.codeToHtml(code, {
-					lang,
-					theme: "github-dark",
-				});
-				// Shiki returns <pre><code>...</code></pre>.
-				// Extract the inner HTML — comrak calls our pre/code callbacks for the wrappers.
-				const match = highlighted.match(
-					/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/,
-				);
-				return match?.[1] ?? code;
-			} catch {
-				return code;
-			}
-		},
-		(attrs: Record<string, string>) => {
-			const cls = attrs.class ? ` ${attrs.class}` : "";
-			return `<pre class="shiki github-dark${cls}" style="background-color:#24292e;color:#e1e4e8;padding:1em;border-radius:6px;overflow-x:auto">`;
-		},
-		(attrs: Record<string, string>) => {
-			const cls = attrs.class ? ` class="${attrs.class}"` : "";
-			return `<code${cls}>`;
-		},
-	),
+	createShikiAdapter(SyntaxHighlighter, shiki, {
+		name: "github-dark",
+		bg: "#24292e",
+		fg: "#e1e4e8",
+	}),
 );
 
 // --- Output ---

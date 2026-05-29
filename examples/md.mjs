@@ -9,6 +9,7 @@ import {
 	mdToAnsi,
 	mdToText,
 } from "../pkg/comrak.js";
+import { gfmExtensions } from "./shared/options.js";
 
 const require = createRequire(import.meta.url);
 const wasmPath = require.resolve("../pkg/comrak.wasm");
@@ -78,27 +79,7 @@ try {
 }
 
 const opts = {
-	extension: {
-		strikethrough: true,
-		table: true,
-		tasklist: true,
-		autolink: true,
-		headerIds: "",
-		frontMatterDelimiter: "---",
-		alerts: true,
-		footnotes: true,
-		mathDollars: true,
-		superscript: true,
-		subscript: true,
-		underline: true,
-		spoiler: true,
-		highlight: true,
-		insert: true,
-		descriptionLists: true,
-		multilineBlockQuotes: true,
-		shortcodes: true,
-		wikilinksTitleAfterPipe: true,
-	},
+	extension: gfmExtensions,
 };
 
 const shadow = noShadow ? undefined : "░";

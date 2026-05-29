@@ -15,6 +15,8 @@ import init, {
 	SyntaxHighlighter,
 } from "../../pkg/comrak.js";
 import type { ComrakOptions } from "../../types";
+import { gfmExtensions } from "../shared/options.js";
+import { createShikiAdapter } from "../shared/shiki-adapter";
 
 const input = document.getElementById("input") as HTMLTextAreaElement;
 const output = document.getElementById("output") as HTMLDivElement;
@@ -77,29 +79,7 @@ function getOptions(): ComrakOptions {
 		render: { unsafe: unsafeCheck.checked },
 	};
 	if (gfmCheck.checked) {
-		opts.extension = {
-			strikethrough: true,
-			table: true,
-			tasklist: true,
-			autolink: true,
-			headerIds: "",
-			frontMatterDelimiter: "---",
-			alerts: true,
-			footnotes: true,
-			inlineFootnotes: true,
-			mathDollars: true,
-			mathCode: true,
-			superscript: true,
-			subscript: true,
-			underline: true,
-			spoiler: true,
-			highlight: true,
-			insert: true,
-			descriptionLists: true,
-			multilineBlockQuotes: true,
-			wikilinksTitleAfterPipe: true,
-			shortcodes: true,
-		};
+		opts.extension = gfmExtensions;
 	}
 	return opts;
 }
@@ -126,31 +106,7 @@ const shikiThemes = {
 function createHighlighterAdapter(): SyntaxHighlighter | null {
 	if (!shikiCheck.checked || !shiki) return null;
 	const t = isDark() ? shikiThemes.dark : shikiThemes.light;
-	return new SyntaxHighlighter(
-		(code: string, lang: string | undefined) => {
-			if (!lang || !shiki) return code;
-			try {
-				const highlighted = shiki.codeToHtml(code, {
-					lang,
-					theme: t.name,
-				});
-				const match = highlighted.match(
-					/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/,
-				);
-				return match?.[1] ?? code;
-			} catch {
-				return code;
-			}
-		},
-		(attrs: Record<string, string>) => {
-			const cls = attrs.class ? ` ${attrs.class}` : "";
-			return `<pre class="shiki ${t.name}${cls}" style="background-color:${t.bg};color:${t.fg};padding:1em;border-radius:6px;overflow-x:auto">`;
-		},
-		(attrs: Record<string, string>) => {
-			const cls = attrs.class ? ` class="${attrs.class}"` : "";
-			return `<code${cls}>`;
-		},
-	);
+	return createShikiAdapter(SyntaxHighlighter, shiki, t);
 }
 
 function renderMath(container: HTMLElement) {
