@@ -333,7 +333,7 @@
   <body>
     <div class="layout">
       <div class="toolbar">
-        <h1>@typefm/comrak-wasm playground</h1>
+        <h1>comrak-wasm playground</h1>
         <select id="format">
           <option value="preview">HTML (preview)</option>
           <option value="html">HTML (source)</option>
@@ -372,11 +372,11 @@
       <div class="pane">
         <textarea id="input">
 ---
-title: "@typefm/comrak-wasm playground"
+title: "comrak-wasm playground"
 description: WebAssembly bindings for comrak
 ---
 
-# @typefm/comrak-wasm playground
+# comrak-wasm playground
 
 Renders markdown using **comrak** 0.51 compiled to WebAssembly — supporting
 *seven output formats* from a single parse.
@@ -405,7 +405,7 @@ Tables support *inline formatting*:
 ## Code Examples
 
 ```typescript
-import init, { mdToHtml, mdToAnsi } from "@typefm/comrak-wasm";
+import init, { mdToHtml, mdToAnsi } from "comrak-wasm";
 
 await init();
 

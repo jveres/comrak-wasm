@@ -1,4 +1,4 @@
-# @typefm/comrak-wasm
+# comrak-wasm
 
 WebAssembly bindings for [comrak](https://github.com/kivikakk/comrak) — a fast CommonMark + GFM compatible Markdown parser and renderer.
 
@@ -7,7 +7,7 @@ Single ~900KB WASM binary. Runs in browsers, Node.js, Deno, Bun, and edge runtim
 ## Install
 
 ```bash
-npm install @typefm/comrak-wasm
+npm install comrak-wasm
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ npm install @typefm/comrak-wasm
 ### Browser
 
 ```typescript
-import init, { mdToHtml } from "@typefm/comrak-wasm";
+import init, { mdToHtml } from "comrak-wasm";
 
 await init();
 
@@ -30,11 +30,11 @@ const html = mdToHtml("# Hello **world**", {
 ```typescript
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { initSync, mdToHtml } from "@typefm/comrak-wasm";
+import { initSync, mdToHtml } from "comrak-wasm";
 
 const require = createRequire(import.meta.url);
 const wasm = readFileSync(
-  require.resolve("@typefm/comrak-wasm/pkg/comrak.wasm"),
+  require.resolve("comrak-wasm/pkg/comrak.wasm"),
 );
 initSync({ module: wasm });
 
@@ -89,7 +89,7 @@ mdToHtml(md, {
 ### Syntax Highlighting
 
 ```typescript
-import { SyntaxHighlighter, mdToHtmlWithPlugins } from "@typefm/comrak-wasm";
+import { SyntaxHighlighter, mdToHtmlWithPlugins } from "comrak-wasm";
 import { createHighlighter } from "shiki";
 
 const shiki = await createHighlighter({
@@ -121,7 +121,7 @@ const html = mdToHtmlWithPlugins(
 ### Heading Adapter
 
 ```typescript
-import { HeadingAdapter, mdToHtmlWithPlugins } from "@typefm/comrak-wasm";
+import { HeadingAdapter, mdToHtmlWithPlugins } from "comrak-wasm";
 
 const html = mdToHtmlWithPlugins(
   markdown,
@@ -139,7 +139,7 @@ const html = mdToHtmlWithPlugins(
 Per-language custom rendering for specific codefence blocks (e.g., mermaid, katex):
 
 ```typescript
-import { mdToHtmlWithCodefenceRenderers } from "@typefm/comrak-wasm";
+import { mdToHtmlWithCodefenceRenderers } from "comrak-wasm";
 
 const html = mdToHtmlWithCodefenceRenderers(markdown, options, {
   mermaid: (lang, meta, code) => `<div class="mermaid">${code}</div>`,
@@ -151,7 +151,7 @@ const html = mdToHtmlWithCodefenceRenderers(markdown, options, {
 ### URL Rewriters
 
 ```typescript
-import { mdToHtmlWithRewriters } from "@typefm/comrak-wasm";
+import { mdToHtmlWithRewriters } from "comrak-wasm";
 
 const html = mdToHtmlWithRewriters(
   markdown,
@@ -166,7 +166,7 @@ const html = mdToHtmlWithRewriters(
 ### Plain Text
 
 ````typescript
-import { mdToText } from "@typefm/comrak-wasm";
+import { mdToText } from "comrak-wasm";
 
 const text = mdToText(
   markdown,
@@ -180,7 +180,7 @@ const text = mdToText(
 ### ANSI Terminal
 
 ```typescript
-import { mdToAnsi, ansiThemeDark, ansiThemeLight } from "@typefm/comrak-wasm";
+import { mdToAnsi, ansiThemeDark, ansiThemeLight } from "comrak-wasm";
 
 // Default theme (showMarkdown off, showUrls on, table shadow on)
 const ansi = mdToAnsi(markdown, options);
@@ -219,7 +219,7 @@ Features:
 Extract raw frontmatter content (YAML, TOML, etc.) for parsing on the JS side:
 
 ```typescript
-import { getFrontmatter } from "@typefm/comrak-wasm";
+import { getFrontmatter } from "comrak-wasm";
 
 const raw = getFrontmatter(markdown, {
   extension: { frontMatterDelimiter: "---" },
@@ -237,7 +237,7 @@ Returns `undefined` if no frontmatter is present.
 Fix incomplete markdown from LLM streaming — closes unclosed delimiters:
 
 ````typescript
-import { healMarkdown } from "@typefm/comrak-wasm";
+import { healMarkdown } from "comrak-wasm";
 
 healMarkdown("**bold"); // → "**bold**"
 healMarkdown("```js\ncode"); // → "```js\ncode\n```"
@@ -257,22 +257,22 @@ Render markdown in the terminal via `npx`:
 
 ````bash
 # ANSI colored output (default)
-npx @typefm/comrak-wasm README.md
+npx comrak-wasm README.md
 
 # Plain text output
-npx @typefm/comrak-wasm --text README.md
+npx comrak-wasm --text README.md
 
 # Show markdown markers (#, ```, **, etc.)
-npx @typefm/comrak-wasm --markdown README.md
+npx comrak-wasm --markdown README.md
 
 # Disable table shadow
-npx @typefm/comrak-wasm --no-shadow README.md
+npx comrak-wasm --no-shadow README.md
 
 # Read from stdin
-echo "# Hello **world**" | npx @typefm/comrak-wasm -
+echo "# Hello **world**" | npx comrak-wasm -
 
 # Combine options
-npx @typefm/comrak-wasm -t -m --no-shadow README.md
+npx comrak-wasm -t -m --no-shadow README.md
 ````
 
 Or if installed globally / in a project, use the `comrak-wasm` command directly:

@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "WebAssembly bindings for comrak — a fast CommonMark + GFM Markdown parser and renderer"
-repository = "https://github.com/jveres/typefm"
+repository = "https://github.com/jveres/comrak-wasm"
 publish = false
 
 [lib]

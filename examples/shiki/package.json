@@ -6,7 +6,7 @@
 		"start": "node index.ts && open output.html"
 	},
 	"dependencies": {
-		"@typefm/comrak-wasm": "file:../..",
+		"comrak-wasm": "file:../..",
 		"shiki": "^4.0.2"
 	}
 }

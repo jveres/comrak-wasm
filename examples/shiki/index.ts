@@ -14,13 +14,13 @@ import {
 	initSync,
 	mdToHtmlWithPlugins,
 	SyntaxHighlighter,
-} from "@typefm/comrak-wasm";
+} from "comrak-wasm";
 import { createHighlighter } from "shiki";
 
 // --- Init WASM ---
 
 const require = createRequire(import.meta.url);
-const wasmPath = require.resolve("@typefm/comrak-wasm/pkg/comrak.wasm");
+const wasmPath = require.resolve("comrak-wasm/pkg/comrak.wasm");
 initSync({ module: await readFile(wasmPath) });
 
 // --- Init Shiki ---
