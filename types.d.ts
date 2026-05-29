@@ -5,8 +5,13 @@ export interface ExtensionOptions {
 	autolink?: boolean;
 	tasklist?: boolean;
 	superscript?: boolean;
-	/** @deprecated Use headerIdPrefix instead */
+	/**
+	 * Enables heading `id` attributes, using this string as the id prefix.
+	 * Pass `""` to enable ids with no prefix.
+	 * @deprecated Use headerIdPrefix instead
+	 */
 	headerIds?: string;
+	/** Heading `id` prefix; `""` enables ids with no prefix. */
 	headerIdPrefix?: string;
 	headerIdPrefixInHref?: boolean;
 	footnotes?: boolean;
@@ -69,8 +74,11 @@ export interface ComrakOptions {
 }
 
 export function comrakVersion(): string;
-export function mdToHtml(md: string, options?: ComrakOptions): string;
-export function mdToCommonmark(md: string, options?: ComrakOptions): string;
+export function mdToHtml(md: string, options?: ComrakOptions | null): string;
+export function mdToCommonmark(
+	md: string,
+	options?: ComrakOptions | null,
+): string;
 
 export class SyntaxHighlighter {
 	constructor(
@@ -91,20 +99,26 @@ export class HeadingAdapter {
 
 export function mdToHtmlWithPlugins(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	syntaxHighlighter?: SyntaxHighlighter | null,
 	headingAdapter?: HeadingAdapter | null,
 ): string;
 
-export function mdToXml(md: string, options?: ComrakOptions): string;
+export function mdToXml(md: string, options?: ComrakOptions | null): string;
 
 export function mdToXmlWithPlugins(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	syntaxHighlighter?: SyntaxHighlighter | null,
 	headingAdapter?: HeadingAdapter | null,
 ): string;
 
+/**
+ * Low-level renderer wrapper exported by the WASM module. Most callers don't
+ * construct this directly — pass a plain
+ * `{ [lang]: (lang, meta, code) => string }` object as the `renderers` argument
+ * of {@link mdToHtmlWithCodefenceRenderers}.
+ */
 export class CodefenceRenderer {
 	constructor(write: (lang: string, meta: string, code: string) => string);
 	free(): void;
@@ -112,7 +126,7 @@ export class CodefenceRenderer {
 
 export function mdToHtmlWithCodefenceRenderers(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	renderers?: Record<
 		string,
 		(lang: string, meta: string, code: string) => string
@@ -123,14 +137,14 @@ export function mdToHtmlWithCodefenceRenderers(
 
 export function mdToHtmlWithRewriters(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	imageUrlRewriter?: ((url: string) => string) | null,
 	linkUrlRewriter?: ((url: string) => string) | null,
 ): string;
 
 export function mdToText(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	showUrls?: boolean,
 	showMarkdown?: boolean,
 	tableShadow?: string,
@@ -159,6 +173,7 @@ export interface AnsiTheme {
 	listBullet?: string;
 	math?: string;
 	reset?: string;
+	// Behavior flags (not colors):
 	showUrls?: boolean;
 	showMarkdown?: boolean;
 	tableShadow?: string;
@@ -167,7 +182,7 @@ export interface AnsiTheme {
 
 export function mdToAnsi(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	theme?: AnsiTheme,
 ): string;
 
@@ -176,7 +191,7 @@ export function ansiThemeLight(): AnsiTheme;
 
 export function getFrontmatter(
 	md: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 ): string | undefined;
 
 export function healMarkdown(md: string): string;

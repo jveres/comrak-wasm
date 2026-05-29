@@ -212,7 +212,7 @@ impl Formatter for AnsiFormatter {
     // Styled blockquote prefix and italic text
     fn quote_prefix(&self, out: &mut String) {
         self.style(out, "blockquote_border");
-        out.push_str("│");
+        out.push('│');
         self.style_end(out, "blockquote_border");
         out.push(' ');
     }

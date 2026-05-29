@@ -4,9 +4,13 @@
 		"target": "ES2022",
 		"module": "Node16",
 		"moduleResolution": "Node16",
+		"lib": ["ES2022", "DOM"],
 		"noEmit": true,
 		"skipLibCheck": true,
-		"types": ["node"]
+		"types": ["node"],
+		"paths": {
+			"comrak-wasm": ["./types.d.ts"]
+		}
 	},
-	"include": ["types.d.ts"]
+	"include": ["types.d.ts", "comrak.test.ts", "vitest.config.ts"]
 }

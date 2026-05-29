@@ -217,6 +217,9 @@ fn build_options(opts: ComrakOptions) -> comrak::Options<'static> {
     options
 }
 
+/// Parse a JS options object into `ComrakOptions`. A missing/`null`/`undefined`
+/// value yields defaults; a malformed object also falls back to defaults rather
+/// than erroring, keeping the JS API forgiving (callers may pass partial options).
 fn parse_options(val: JsValue) -> ComrakOptions {
     if val.is_undefined() || val.is_null() {
         ComrakOptions::default()
@@ -417,6 +420,22 @@ impl ComrakHeadingAdapter for HeadingAdapter {
 
 // --- HTML with plugins ---
 
+/// Build `Plugins` wired with the optional syntax-highlighter and heading
+/// adapters. The result borrows from both adapters, so they must outlive it.
+fn build_plugins<'a>(
+    syntax_highlighter: &'a Option<SyntaxHighlighter>,
+    heading_adapter: &'a Option<HeadingAdapter>,
+) -> Plugins<'a> {
+    let mut plugins = Plugins::default();
+    if let Some(sh) = syntax_highlighter {
+        plugins.render.codefence_syntax_highlighter = Some(sh);
+    }
+    if let Some(ha) = heading_adapter {
+        plugins.render.heading_adapter = Some(ha);
+    }
+    plugins
+}
+
 #[wasm_bindgen(js_name = mdToHtmlWithPlugins)]
 pub fn md_to_html_with_plugins_js(
     md: &str,
@@ -425,15 +444,7 @@ pub fn md_to_html_with_plugins_js(
     heading_adapter: Option<HeadingAdapter>,
 ) -> String {
     let opts = build_options(parse_options(options));
-    let mut plugins = Plugins::default();
-
-    if let Some(ref sh) = syntax_highlighter {
-        plugins.render.codefence_syntax_highlighter = Some(sh);
-    }
-    if let Some(ref ha) = heading_adapter {
-        plugins.render.heading_adapter = Some(ha);
-    }
-
+    let plugins = build_plugins(&syntax_highlighter, &heading_adapter);
     markdown_to_html_with_plugins(md, &opts, &plugins)
 }
 
@@ -453,15 +464,7 @@ pub fn md_to_xml_with_plugins_js(
     heading_adapter: Option<HeadingAdapter>,
 ) -> String {
     let opts = build_options(parse_options(options));
-    let mut plugins = Plugins::default();
-
-    if let Some(ref sh) = syntax_highlighter {
-        plugins.render.codefence_syntax_highlighter = Some(sh);
-    }
-    if let Some(ref ha) = heading_adapter {
-        plugins.render.heading_adapter = Some(ha);
-    }
-
+    let plugins = build_plugins(&syntax_highlighter, &heading_adapter);
     markdown_to_commonmark_xml_with_plugins(md, &opts, &plugins)
 }
 
@@ -517,34 +520,28 @@ pub fn md_to_html_with_codefence_renderers(
     heading_adapter: Option<HeadingAdapter>,
 ) -> String {
     let opts = build_options(parse_options(options));
-    let mut plugins = Plugins::default();
 
-    if let Some(ref sh) = syntax_highlighter {
-        plugins.render.codefence_syntax_highlighter = Some(sh);
-    }
-    if let Some(ref ha) = heading_adapter {
-        plugins.render.heading_adapter = Some(ha);
-    }
-
-    // Parse codefence renderers from JS object { lang: Function }
+    // Parse codefence renderers from JS object { lang: Function } first, so the
+    // Vec outlives the Plugins that borrows from it.
     let mut cf_renderers: Vec<(String, CodefenceRenderer)> = Vec::new();
     if !renderers.is_null() && !renderers.is_undefined() {
         if let Ok(obj) = renderers.dyn_into::<js_sys::Object>() {
-        let keys = js_sys::Object::keys(&obj);
-        let obj: JsValue = obj.into();
-        for i in 0..keys.length() {
-            let key_val = keys.get(i);
-            if let Some(key) = key_val.as_string() {
-                if let Ok(func) = js_sys::Reflect::get(&obj, &JsValue::from_str(&key)) {
-                    if let Ok(f) = func.dyn_into::<Function>() {
-                        cf_renderers.push((key, CodefenceRenderer::new(f)));
+            let keys = js_sys::Object::keys(&obj);
+            let obj: JsValue = obj.into();
+            for i in 0..keys.length() {
+                let key_val = keys.get(i);
+                if let Some(key) = key_val.as_string() {
+                    if let Ok(func) = js_sys::Reflect::get(&obj, &JsValue::from_str(&key)) {
+                        if let Ok(f) = func.dyn_into::<Function>() {
+                            cf_renderers.push((key, CodefenceRenderer::new(f)));
+                        }
                     }
                 }
             }
         }
-        }
     }
 
+    let mut plugins = build_plugins(&syntax_highlighter, &heading_adapter);
     for (lang, renderer) in &cf_renderers {
         plugins
             .render
@@ -685,16 +682,22 @@ pub fn get_frontmatter(md: &str, options: JsValue) -> Option<String> {
     let opts = build_options(parse_options(options));
     let arena = Arena::new();
     let root = parse_document(&arena, md, &opts);
+    // comrak only emits a FrontMatter node when a delimiter is configured, so
+    // strip exactly that delimiter from both ends (open and close must match).
+    let delim = opts
+        .extension
+        .front_matter_delimiter
+        .as_deref()
+        .unwrap_or("---");
     for child in root.children() {
         if let comrak::nodes::NodeValue::FrontMatter(ref s) = child.data.borrow().value {
             let trimmed = s.trim();
-            // Strip opening and closing delimiter lines
             let content = trimmed
-                .strip_prefix("---").or_else(|| trimmed.strip_prefix("+++"))
+                .strip_prefix(delim)
                 .unwrap_or(trimmed)
                 .trim_start_matches('\n');
             let content = content
-                .strip_suffix("---").or_else(|| content.strip_suffix("+++"))
+                .strip_suffix(delim)
                 .unwrap_or(content)
                 .trim_end_matches('\n');
             if content.is_empty() {

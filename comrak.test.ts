@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { beforeAll, describe, expect, test } from "vitest";
 import {
 	ansiThemeDark,
 	ansiThemeLight,
@@ -18,7 +17,8 @@ import {
 	mdToXml,
 	mdToXmlWithPlugins,
 	SyntaxHighlighter,
-} from "./pkg/comrak.js";
+} from "comrak-wasm";
+import { beforeAll, describe, expect, test } from "vitest";
 
 type HeadingMeta = { level: number; content: string };
 
@@ -140,11 +140,11 @@ describe("extensions", () => {
 	});
 
 	test("footnotes", () => {
-		expect(
-			mdToHtml("Text[^1]\n\n[^1]: Footnote content", {
-				extension: { footnotes: true },
-			}),
-		).toContain("footnote");
+		const html = mdToHtml("Text[^1]\n\n[^1]: Footnote content", {
+			extension: { footnotes: true },
+		});
+		expect(html).toContain('class="footnote-ref"');
+		expect(html).toContain("Footnote content");
 	});
 
 	test("alerts", () => {
@@ -339,7 +339,7 @@ describe("syntax highlighter", () => {
 			() => "<code>",
 		);
 		mdToHtmlWithPlugins("```\nno lang\n```", { render: { unsafe: true } }, sh);
-		expect(receivedLang === undefined || receivedLang === "").toBe(true);
+		expect(receivedLang).toBe("");
 	});
 
 	test("null adapter falls back to default", () => {
@@ -453,8 +453,6 @@ describe("xml", () => {
 		expect(xml).toContain("Hello");
 	});
 });
-
-// --- Typst ---
 
 // --- Codefence Renderer ---
 
@@ -1068,59 +1066,40 @@ describe("memory", () => {
 		return wasmMemory.buffer.byteLength / 65536;
 	}
 
-	test("mdToHtml does not leak memory over repeated calls", () => {
-		// Warm up
-		for (let i = 0; i < 10; i++) mdToHtml(md, opts);
+	// Asserts the WASM heap grows by at most one 64 KiB page across 1000 calls.
+	function expectNoLeak(fn: () => void): void {
+		for (let i = 0; i < 10; i++) fn(); // warm up
 		const before = getWasmPages();
-		for (let i = 0; i < 1000; i++) mdToHtml(md, opts);
+		for (let i = 0; i < 1000; i++) fn();
 		const after = getWasmPages();
 		expect(after - before).toBeLessThanOrEqual(1);
+	}
+
+	test("mdToHtml does not leak memory over repeated calls", () => {
+		expectNoLeak(() => mdToHtml(md, opts));
 	});
 
 	test("mdToText does not leak memory over repeated calls", () => {
-		for (let i = 0; i < 10; i++) mdToText(md, opts);
-		const before = getWasmPages();
-		for (let i = 0; i < 1000; i++) mdToText(md, opts);
-		const after = getWasmPages();
-		expect(after - before).toBeLessThanOrEqual(1);
+		expectNoLeak(() => mdToText(md, opts));
 	});
 
 	test("mdToAnsi does not leak memory over repeated calls", () => {
-		for (let i = 0; i < 10; i++) mdToAnsi(md, opts);
-		const before = getWasmPages();
-		for (let i = 0; i < 1000; i++) mdToAnsi(md, opts);
-		const after = getWasmPages();
-		expect(after - before).toBeLessThanOrEqual(1);
+		expectNoLeak(() => mdToAnsi(md, opts));
 	});
 
 	test("healMarkdown does not leak memory over repeated calls", () => {
 		const incomplete = "**bold\n```js\ncode\n~~strike";
-		for (let i = 0; i < 10; i++) healMarkdown(incomplete);
-		const before = getWasmPages();
-		for (let i = 0; i < 1000; i++) healMarkdown(incomplete);
-		const after = getWasmPages();
-		expect(after - before).toBeLessThanOrEqual(1);
+		expectNoLeak(() => healMarkdown(incomplete));
 	});
 
 	test("mdToHtmlWithPlugins does not leak memory over repeated calls", () => {
-		for (let i = 0; i < 10; i++) {
+		expectNoLeak(() => {
 			const sh = new SyntaxHighlighter(
 				(code: string) => code,
 				() => "<pre>",
 				() => "<code>",
 			);
 			mdToHtmlWithPlugins(md, opts, sh);
-		}
-		const before = getWasmPages();
-		for (let i = 0; i < 1000; i++) {
-			const sh = new SyntaxHighlighter(
-				(code: string) => code,
-				() => "<pre>",
-				() => "<code>",
-			);
-			mdToHtmlWithPlugins(md, opts, sh);
-		}
-		const after = getWasmPages();
-		expect(after - before).toBeLessThanOrEqual(1);
+		});
 	});
 });

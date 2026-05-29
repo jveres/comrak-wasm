@@ -1,5 +1,5 @@
-/// Heals incomplete markdown by closing unclosed delimiters.
-/// Operates as a pre-parser text transform — fixes raw markdown before parsing.
+//! Heals incomplete markdown by closing unclosed delimiters.
+//! Operates as a pre-parser text transform — fixes raw markdown before parsing.
 
 pub fn heal_markdown(input: &str) -> String {
     let mut buf = input.to_string();
@@ -62,6 +62,21 @@ fn is_escaped(s: &str, pos: usize) -> bool {
     backslashes % 2 == 1
 }
 
+/// If a fenced-code delimiter (a run of 3 or more backticks) starts at byte
+/// `i`, returns the full run length; otherwise `None`. The escape check is left
+/// to callers, since fence semantics depend on the surrounding context.
+fn fence_at(bytes: &[u8], i: usize) -> Option<usize> {
+    if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        let mut run = 3;
+        while i + run < bytes.len() && bytes[i + run] == b'`' {
+            run += 1;
+        }
+        Some(run)
+    } else {
+        None
+    }
+}
+
 fn in_fenced_code_block(s: &str, up_to: usize) -> bool {
     // Snap to char boundary (callers may pass byte offsets inside multi-byte chars)
     let mut pos = up_to.min(s.len());
@@ -73,14 +88,10 @@ fn in_fenced_code_block(s: &str, up_to: usize) -> bool {
     let mut i = 0;
     let bytes = text.as_bytes();
     while i < bytes.len() {
-        if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        if let Some(run) = fence_at(bytes, i) {
             if !is_escaped(text, i) {
                 fences += 1;
-                i += 3;
-                // Skip to end of backtick run
-                while i < bytes.len() && bytes[i] == b'`' {
-                    i += 1;
-                }
+                i += run;
                 continue;
             }
         }
@@ -94,13 +105,10 @@ fn count_fences(s: &str) -> usize {
     let mut i = 0;
     let bytes = s.as_bytes();
     while i < bytes.len() {
-        if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        if let Some(run) = fence_at(bytes, i) {
             if !is_escaped(s, i) {
                 count += 1;
-                i += 3;
-                while i < bytes.len() && bytes[i] == b'`' {
-                    i += 1;
-                }
+                i += run;
                 continue;
             }
         }
@@ -115,13 +123,10 @@ fn count_backticks_outside_fences(s: &str) -> usize {
     let mut i = 0;
     let bytes = s.as_bytes();
     while i < bytes.len() {
-        if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        if let Some(run) = fence_at(bytes, i) {
             if !is_escaped(s, i) {
                 in_fence = !in_fence;
-                i += 3;
-                while i < bytes.len() && bytes[i] == b'`' {
-                    i += 1;
-                }
+                i += run;
                 continue;
             }
         }
@@ -142,13 +147,10 @@ fn count_delimiter_outside_fences(s: &str, delim: &str) -> usize {
     let bytes = s.as_bytes();
     while i < bytes.len() {
         // Track fences
-        if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        if let Some(run) = fence_at(bytes, i) {
             if !is_escaped(s, i) {
                 in_fence = !in_fence;
-                i += 3;
-                while i < bytes.len() && bytes[i] == b'`' {
-                    i += 1;
-                }
+                i += run;
                 continue;
             }
         }
@@ -221,34 +223,29 @@ fn heal_setext(buf: &mut String) {
 }
 
 fn heal_links(buf: &mut String) {
-    // Find last unclosed [ or ![
-    // Track fence state inline to avoid O(n^2) from calling in_fenced_code_block per byte.
+    // Find last unclosed [ or ![. Track fence state and backslash-escape parity
+    // inline; calling is_escaped per byte would be O(n^2) on backslash-heavy input.
     let bytes = buf.as_bytes();
     let mut bracket_depth = 0i32;
     let mut last_open: Option<(usize, bool)> = None; // (pos, is_image)
     let mut in_fence = false;
+    let mut backslashes = 0usize; // consecutive '\' immediately before byte i
 
     let mut i = 0;
     while i < bytes.len() {
-        // Track fenced code blocks
-        if i + 2 < bytes.len()
-            && bytes[i] == b'`'
-            && bytes[i + 1] == b'`'
-            && bytes[i + 2] == b'`'
-            && !is_escaped(buf, i)
-        {
-            in_fence = !in_fence;
-            i += 3;
-            while i < bytes.len() && bytes[i] == b'`' {
-                i += 1;
+        let escaped = backslashes % 2 == 1;
+
+        // Track fenced code blocks (a fence delimiter is never escaped)
+        if !escaped {
+            if let Some(run) = fence_at(bytes, i) {
+                in_fence = !in_fence;
+                i += run;
+                backslashes = 0;
+                continue;
             }
-            continue;
         }
-        if in_fence {
-            i += 1;
-            continue;
-        }
-        if is_escaped(buf, i) {
+        if in_fence || escaped {
+            backslashes = if bytes[i] == b'\\' { backslashes + 1 } else { 0 };
             i += 1;
             continue;
         }
@@ -262,6 +259,7 @@ fn heal_links(buf: &mut String) {
                 bracket_depth = 0;
             }
         }
+        backslashes = if bytes[i] == b'\\' { backslashes + 1 } else { 0 };
         i += 1;
     }
 
@@ -332,13 +330,10 @@ fn heal_italic_asterisk(buf: &mut String) {
     let mut i = 0;
     let bytes = buf.as_bytes();
     while i < bytes.len() {
-        if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        if let Some(run) = fence_at(bytes, i) {
             if !is_escaped(buf, i) {
                 in_fence = !in_fence;
-                i += 3;
-                while i < bytes.len() && bytes[i] == b'`' {
-                    i += 1;
-                }
+                i += run;
                 continue;
             }
         }
@@ -384,13 +379,10 @@ fn heal_italic_underscore(buf: &mut String) {
     let mut i = 0;
     let bytes = buf.as_bytes();
     while i < bytes.len() {
-        if i + 2 < bytes.len() && bytes[i] == b'`' && bytes[i + 1] == b'`' && bytes[i + 2] == b'`' {
+        if let Some(run) = fence_at(bytes, i) {
             if !is_escaped(buf, i) {
                 in_fence = !in_fence;
-                i += 3;
-                while i < bytes.len() && bytes[i] == b'`' {
-                    i += 1;
-                }
+                i += run;
                 continue;
             }
         }

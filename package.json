@@ -3,41 +3,17 @@
 	"version": "0.2.1",
 	"description": "WebAssembly bindings for comrak — a fast CommonMark + GFM Markdown parser and renderer",
 	"license": "MIT",
+	"private": true,
 	"type": "module",
 	"main": "pkg/comrak.js",
 	"types": "types.d.ts",
-	"bin": {
-		"comrak-wasm": "examples/md.mjs"
-	},
-	"files": [
-		"pkg/",
-		"examples/md.mjs",
-		"types.d.ts",
-		"LICENSE",
-		"README.md"
-	],
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/jveres/comrak-wasm"
 	},
 	"homepage": "https://github.com/jveres/comrak-wasm",
-	"keywords": [
-		"markdown",
-		"commonmark",
-		"gfm",
-		"parser",
-		"renderer",
-		"wasm",
-		"comrak",
-		"html",
-		"ansi"
-	],
-	"publishConfig": {
-		"access": "public"
-	},
 	"scripts": {
-		"prepack": "npm run build",
-		"build": "cargo build --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-name comrak --out-dir pkg ../../target/wasm32-unknown-unknown/release/comrak_wasm.wasm && mv pkg/comrak_bg.wasm pkg/comrak.wasm && mv pkg/comrak_bg.wasm.d.ts pkg/comrak.wasm.d.ts && sed -i '' 's/comrak_bg\\.wasm/comrak.wasm/g' pkg/comrak.js pkg/comrak.d.ts pkg/comrak.wasm.d.ts",
+		"build": "cargo build --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-name comrak --out-dir pkg target/wasm32-unknown-unknown/release/comrak_wasm.wasm && mv pkg/comrak_bg.wasm pkg/comrak.wasm && mv pkg/comrak_bg.wasm.d.ts pkg/comrak.wasm.d.ts && perl -i -pe 's/comrak_bg\\.wasm/comrak.wasm/g' pkg/comrak.js pkg/comrak.d.ts pkg/comrak.wasm.d.ts",
 		"check": "biome check .",
 		"check:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",

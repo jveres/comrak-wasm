@@ -14,6 +14,7 @@ import init, {
 	mdToXml,
 	SyntaxHighlighter,
 } from "../../pkg/comrak.js";
+import type { ComrakOptions } from "../../types";
 
 const input = document.getElementById("input") as HTMLTextAreaElement;
 const output = document.getElementById("output") as HTMLDivElement;
@@ -39,34 +40,40 @@ const status = document.getElementById("status") as HTMLSpanElement;
 const version = document.getElementById("version") as HTMLSpanElement;
 
 let shiki: Highlighter | null = null;
+let ready = false;
 
-const [, highlighter] = await Promise.all([
-	init(),
-	createHighlighter({
-		themes: ["github-dark", "github-light"],
-		langs: [
-			"typescript",
-			"javascript",
-			"rust",
-			"bash",
-			"json",
-			"html",
-			"css",
-			"python",
-			"go",
-			"yaml",
-			"toml",
-			"markdown",
-		],
-	}),
-]);
+try {
+	const [, highlighter] = await Promise.all([
+		init(),
+		createHighlighter({
+			themes: ["github-dark", "github-light"],
+			langs: [
+				"typescript",
+				"javascript",
+				"rust",
+				"bash",
+				"json",
+				"html",
+				"css",
+				"python",
+				"go",
+				"yaml",
+				"toml",
+				"markdown",
+			],
+		}),
+	]);
+	shiki = highlighter;
+	version.textContent = `comrak ${comrakVersion()}`;
+	status.textContent = "Ready";
+	ready = true;
+} catch (err) {
+	console.error("Failed to initialize comrak-wasm playground:", err);
+	status.textContent = "Failed to load — see console";
+}
 
-shiki = highlighter;
-version.textContent = `comrak ${comrakVersion()}`;
-status.textContent = "Ready";
-
-function getOptions() {
-	const opts: Record<string, unknown> = {
+function getOptions(): ComrakOptions {
+	const opts: ComrakOptions = {
 		render: { unsafe: unsafeCheck.checked },
 	};
 	if (gfmCheck.checked) {
@@ -334,6 +341,7 @@ function updateFormatOptions() {
 }
 
 function render() {
+	if (!ready) return;
 	applyTheme();
 	updateFormatOptions();
 	const md = healCheck.checked ? healMarkdown(input.value) : input.value;

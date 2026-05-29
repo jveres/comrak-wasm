@@ -331,9 +331,10 @@ fn render_cell_styled<'a, F: Formatter>(cell_node: &'a AstNode<'a>, fmt: &F) -> 
 }
 
 fn render_table<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut WalkCtx, fmt: &F) {
-    let alignments = match &node.data.borrow().value {
-        NodeValue::Table(t) => t.alignments.clone(),
-        _ => vec![],
+    let data = node.data.borrow();
+    let alignments: &[TableAlignment] = match &data.value {
+        NodeValue::Table(t) => t.alignments.as_slice(),
+        _ => &[],
     };
 
     // Collect styled text and cached display widths per cell
@@ -469,7 +470,8 @@ fn render_table<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: 
 // --- Item children helper ---
 
 fn walk_item_children<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut WalkCtx, fmt: &F) {
-    let child_count = node.children().count();
+    // Only need "more than one child", so avoid a full count() traversal.
+    let has_multiple_children = node.children().nth(1).is_some();
     let mut first = true;
     for child in node.children() {
         if first {
@@ -480,7 +482,7 @@ fn walk_item_children<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String,
                     walk(inner, out, ctx, fmt);
                 }
                 ensure_newline(out);
-                ctx.needs_newline = child_count > 1;
+                ctx.needs_newline = has_multiple_children;
             } else {
                 walk(child, out, ctx, fmt);
             }
@@ -489,7 +491,7 @@ fn walk_item_children<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String,
         }
     }
     // If item had block children (code blocks etc.), ensure trailing blank line
-    if child_count > 1 {
+    if has_multiple_children {
         ensure_newline(out);
         if !out.ends_with("\n\n") {
             out.push('\n');
@@ -508,10 +510,9 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             for child in node.children() {
                 walk(child, out, ctx, fmt);
             }
-            return;
         }
 
-        NodeValue::FrontMatter(_) | NodeValue::HtmlBlock(_) | NodeValue::HtmlInline(_) => return,
+        NodeValue::FrontMatter(_) | NodeValue::HtmlBlock(_) | NodeValue::HtmlInline(_) => (),
 
         NodeValue::Paragraph => {
             if ctx.needs_newline {
@@ -531,7 +532,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             }
             ensure_newline(out);
             ctx.needs_newline = true;
-            return;
         }
 
         NodeValue::Heading(h) => {
@@ -552,7 +552,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             fmt.heading_end(out);
             ensure_newline(out);
             ctx.needs_newline = true;
-            return;
         }
 
         NodeValue::BlockQuote | NodeValue::MultilineBlockQuote(_) => {
@@ -561,14 +560,13 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
                 walk(child, out, ctx, fmt);
             }
             ctx.quote_depth -= 1;
-            return;
         }
 
         NodeValue::List(nl) => {
             ctx.list_depth += 1;
             ctx.list_tight.push(nl.tight);
             if nl.list_type == comrak::nodes::ListType::Ordered {
-                ctx.list_index.push(Some(nl.start as usize));
+                ctx.list_index.push(Some(nl.start));
             } else {
                 ctx.list_index.push(None);
             }
@@ -578,7 +576,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             ctx.list_index.pop();
             ctx.list_tight.pop();
             ctx.list_depth -= 1;
-            return;
         }
 
         NodeValue::Item(nl) => {
@@ -596,7 +593,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
                 }
             }
             walk_item_children(node, out, ctx, fmt);
-            return;
         }
 
         NodeValue::TaskItem(ti) => {
@@ -607,7 +603,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             write_list_indent(out, ctx);
             fmt.task_marker(out, ti.symbol.is_some());
             walk_item_children(node, out, ctx, fmt);
-            return;
         }
 
         NodeValue::CodeBlock(cb) => {
@@ -622,7 +617,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             }
             fmt.code_block_end(out);
             ctx.needs_newline = true;
-            return;
         }
 
         NodeValue::ThematicBreak => {
@@ -632,7 +626,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             }
             fmt.thematic_break(out);
             ctx.needs_newline = true;
-            return;
         }
 
         // Leaf inlines — delegate to walk_inline (shared with table cells)
@@ -640,7 +633,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
         | NodeValue::Math(_) | NodeValue::FootnoteReference(_) | NodeValue::WikiLink(_)
         | NodeValue::ShortCode(_) => {
             walk_inline(node, out, fmt);
-            return;
         }
 
         NodeValue::LineBreak => {
@@ -654,50 +646,42 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             fmt.strong_start(out);
             for child in node.children() { walk(child, out, ctx, fmt); }
             fmt.strong_end(out);
-            return;
         }
         NodeValue::Emph => {
             fmt.emph_start(out);
             for child in node.children() { walk(child, out, ctx, fmt); }
             fmt.emph_end(out);
-            return;
         }
         NodeValue::Strikethrough => {
             fmt.strikethrough_start(out);
             for child in node.children() { walk(child, out, ctx, fmt); }
             fmt.strikethrough_end(out);
-            return;
         }
         NodeValue::Underline => {
             fmt.underline_start(out);
             for child in node.children() { walk(child, out, ctx, fmt); }
             fmt.underline_end(out);
-            return;
         }
         NodeValue::Highlight | NodeValue::Insert | NodeValue::Superscript
         | NodeValue::Subscript | NodeValue::SpoileredText | NodeValue::Escaped => {
             for child in node.children() { walk(child, out, ctx, fmt); }
-            return;
         }
         NodeValue::Link(link) => {
             fmt.link_start(out, &link.url);
             for child in node.children() { walk(child, out, ctx, fmt); }
             fmt.link_end(out, &link.url);
-            return;
         }
         NodeValue::Image(link) => {
             for child in node.children() { walk(child, out, ctx, fmt); }
             fmt.image_end(out, &link.url);
-            return;
         }
 
         NodeValue::Table(_) => {
             render_table(node, out, ctx, fmt);
-            return;
         }
-        NodeValue::TableRow(_) | NodeValue::TableCell => return,
+        NodeValue::TableRow(_) | NodeValue::TableCell => (),
 
-        NodeValue::FootnoteDefinition(_) => return,
+        NodeValue::FootnoteDefinition(_) => (),
 
         NodeValue::Alert(a) => {
             if ctx.needs_newline {
@@ -711,7 +695,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
                 walk(child, out, ctx, fmt);
             }
             ctx.needs_newline = true;
-            return;
         }
 
         NodeValue::DescriptionList | NodeValue::DescriptionItem(_)
@@ -719,12 +702,11 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             for child in node.children() {
                 walk(child, out, ctx, fmt);
             }
-            return;
         }
 
         NodeValue::Raw(s) => out.push_str(s),
         NodeValue::EscapedTag(s) => out.push_str(s),
-        NodeValue::HeexBlock(_) | NodeValue::HeexInline(_) | NodeValue::BlockDirective(_) => return,
+        NodeValue::HeexBlock(_) | NodeValue::HeexInline(_) | NodeValue::BlockDirective(_) => (),
     }
 }
 

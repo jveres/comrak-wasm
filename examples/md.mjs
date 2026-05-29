@@ -48,6 +48,12 @@ for (const arg of args) {
 		console.log("");
 		console.log("Pass - to read from stdin.");
 		process.exit(0);
+	} else if (arg.startsWith("-") && arg !== "-") {
+		console.error(`error: unknown option '${arg}' (use --help)`);
+		process.exit(1);
+	} else if (filePath !== undefined) {
+		console.error("error: multiple input files given");
+		process.exit(1);
 	} else {
 		filePath = arg;
 	}
@@ -55,14 +61,20 @@ for (const arg of args) {
 
 let md;
 
-if (!filePath || filePath === "-") {
-	const chunks = [];
-	for await (const chunk of process.stdin) {
-		chunks.push(chunk);
+try {
+	if (!filePath || filePath === "-") {
+		const chunks = [];
+		for await (const chunk of process.stdin) {
+			chunks.push(chunk);
+		}
+		md = Buffer.concat(chunks).toString("utf-8");
+	} else {
+		md = await readFile(resolve(filePath), "utf-8");
 	}
-	md = Buffer.concat(chunks).toString("utf-8");
-} else {
-	md = await readFile(resolve(filePath), "utf-8");
+} catch (err) {
+	const src = filePath && filePath !== "-" ? filePath : "stdin";
+	console.error(`error: cannot read ${src}: ${err.message}`);
+	process.exit(1);
 }
 
 const opts = {
