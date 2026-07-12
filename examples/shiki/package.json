@@ -6,7 +6,7 @@
 		"start": "node index.ts && open output.html"
 	},
 	"dependencies": {
-		"comrak-wasm": "file:../..",
-		"shiki": "^4.0.2"
+		"comrak-wasm": "workspace:*",
+		"shiki": "^4.3.1"
 	}
 }

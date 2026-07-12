@@ -1,8 +1,11 @@
 import { readFile } from "node:fs/promises";
+import type { HeadingMeta } from "comrak-wasm";
 import {
+	ansiThemeAuto,
 	ansiThemeDark,
 	ansiThemeLight,
 	comrakVersion,
+	detectColorScheme,
 	getFrontmatter,
 	HeadingAdapter,
 	healMarkdown,
@@ -18,9 +21,34 @@ import {
 	mdToXmlWithPlugins,
 	SyntaxHighlighter,
 } from "comrak-wasm";
+import fc from "fast-check";
 import { beforeAll, describe, expect, test } from "vitest";
+import {
+	extensionFeatureCoverage,
+	parseFeatureCoverage,
+	renderFeatureCoverage,
+} from "./examples/playground/feature-coverage";
+import { createPlaygroundOptions } from "./examples/shared/options.js";
+import {
+	createShikiAdapter,
+	type ShikiHighlighter,
+} from "./examples/shared/shiki-adapter";
 
-type HeadingMeta = { level: number; content: string };
+const invalidStringCallbacks: ReadonlyArray<{
+	description: string;
+	callback: () => string;
+}> = [
+	{
+		description: "throws",
+		callback: () => {
+			throw new Error("callback failed");
+		},
+	},
+	{
+		description: "returns a non-string",
+		callback: (() => 42) as unknown as () => string,
+	},
+];
 
 let wasmMemory: WebAssembly.Memory;
 
@@ -35,8 +63,8 @@ beforeAll(async () => {
 // --- Core ---
 
 describe("core", () => {
-	test("comrakVersion returns semver string", () => {
-		expect(comrakVersion()).toMatch(/^\d+\.\d+\.\d+$/);
+	test("comrakVersion returns the upgraded Comrak release", () => {
+		expect(comrakVersion()).toMatch(/^0\.54\./);
 	});
 
 	test("empty input", () => {
@@ -45,6 +73,95 @@ describe("core", () => {
 
 	test("empty input commonmark", () => {
 		expect(mdToCommonmark("", {})).toBe("");
+	});
+});
+
+// --- Playground Feature Fixture ---
+
+describe("playground feature fixture", () => {
+	test("tracks every public option in a compile-time coverage inventory", () => {
+		expect(Object.keys(extensionFeatureCoverage)).toHaveLength(35);
+		expect(Object.keys(parseFeatureCoverage)).toHaveLength(9);
+		expect(Object.keys(renderFeatureCoverage)).toHaveLength(18);
+	});
+
+	test("exercises the complete compatible feature profile", async () => {
+		const markdown = await readFile(
+			new URL("./examples/playground/sample.md", import.meta.url),
+			"utf8",
+		);
+		const options = createPlaygroundOptions(true, "trusted", "url-first");
+		const html = mdToHtml(markdown, options);
+		const commonmark = mdToCommonmark(markdown, options);
+
+		expect(html).toContain("<del");
+		expect(html).toContain("&lt;xmp>");
+		expect(html).toContain("<table");
+		expect(html).toContain('href="http://www.example.com"');
+		expect(html).toContain("Relaxed task marker");
+		expect(html).toContain("<sup");
+		expect(html).toContain('id="feature-comrak-feature-playground"');
+		expect(html).toContain('href="#feature-comrak-feature-playground"');
+		expect(html).toContain("__inline_");
+		expect(html).toContain('class="footnotes"');
+		expect(html).toContain("<dl");
+		expect(html).not.toContain("tags:");
+		expect(html).toContain("This quote can span multiple paragraphs");
+		expect(html.match(/<aside class="admonition/g)).toHaveLength(5);
+		expect(html.match(/data-math-style/g)?.length).toBeGreaterThanOrEqual(7);
+		expect(html).toContain("🚀 ✨ 🦀");
+		expect(html).toContain('data-wikilink="true"');
+		expect(html).toContain("<u");
+		expect(html).toContain("<sub");
+		expect(html).toContain('class="spoiler"');
+		expect(html).toContain("&gt;greentext stays literal");
+		expect(html).toContain("この文は重要です。</strong>");
+		expect(html).toContain("<mark");
+		expect(html).toContain("<ins");
+		expect(html).toContain("HEEx component link");
+		expect(html).toContain('<div class="warning"');
+		expect(html).not.toContain("data-owner=playground");
+		expect(html).not.toContain("{.typescript data-kind=example}");
+
+		expect(html).toContain("“Smart punctuation”");
+		expect(html).toContain("…");
+		expect(html).toContain("–");
+		expect(html).toContain('href="https://example.com/in-brackets"');
+		expect(html).toContain("data-escaped-char");
+		expect(html).toContain("data-sourcepos");
+		expect(html).toContain("<br");
+		expect(html).toMatch(/<pre[^>]*data-meta="demo-metadata"/);
+		expect(html).toMatch(/<pre[^>]*lang="text"/);
+		expect(html).toContain("[]()");
+		expect(html).toContain("<strong");
+		expect(html).toContain("<figure>");
+		expect(html).toContain('class="contains-task-list"');
+		expect(html).toContain('<aside class="admonition note"');
+
+		expect(commonmark).toContain("+ Nested unordered item");
+		expect(commonmark).toContain("```typescript demo-metadata");
+
+		const titleFirst = createPlaygroundOptions(true, "trusted", "title-first");
+		expect(titleFirst.extension?.wikilinksTitleAfterPipe).toBe(false);
+		expect(titleFirst.extension?.wikilinksTitleBeforePipe).toBe(true);
+		expect(mdToHtml(markdown, titleFirst)).toContain(
+			'href="/guides/comrak" data-wikilink="true">Comrak guide</a>',
+		);
+
+		const escaped = mdToHtml(
+			markdown,
+			createPlaygroundOptions(true, "escape", "url-first"),
+		);
+		expect(escaped).toContain("&lt;details&gt;");
+		expect(escaped).not.toContain("<details>");
+		expect(escaped).toContain("<%= @current_user.name %>");
+
+		const omitted = mdToHtml(
+			markdown,
+			createPlaygroundOptions(true, "omit", "url-first"),
+		);
+		expect(omitted).toContain("<!-- raw HTML omitted -->");
+		expect(omitted).toContain("<%= @current_user.name %>");
 	});
 });
 
@@ -99,6 +216,36 @@ describe("html", () => {
 			render: { compactHtml: true, unsafe: true },
 		});
 		expect(html).not.toContain("\n<p>");
+	});
+
+	test.each([
+		{ description: "negative", width: -1 },
+		{ description: "fractional", width: 1.5 },
+		{ description: "NaN", width: Number.NaN },
+		{ description: "wrong-type", width: "80" },
+	])("rejects $description numeric options", ({ width }) => {
+		const renderWithUncheckedOptions = mdToHtml as unknown as (
+			markdown: string,
+			options: unknown,
+		) => string;
+
+		expect(() =>
+			renderWithUncheckedOptions("hello", { render: { width } }),
+		).toThrow(/invalid comrak options/);
+	});
+
+	test.each([
+		{ description: "alert style", render: { alertStyle: "visual" } },
+		{ description: "list style", render: { listStyle: "bullet" } },
+	])("rejects unsupported $description", ({ render }) => {
+		const renderWithUncheckedOptions = mdToHtml as unknown as (
+			markdown: string,
+			options: unknown,
+		) => string;
+
+		expect(() => renderWithUncheckedOptions("hello", { render })).toThrow(
+			/invalid comrak options/,
+		);
 	});
 });
 
@@ -155,6 +302,15 @@ describe("extensions", () => {
 		expect(html).toContain("markdown-alert-note");
 	});
 
+	test("semantic alert style", () => {
+		const html = mdToHtml("> [!NOTE]\n> Important info", {
+			extension: { alerts: true },
+			render: { alertStyle: "semantic" },
+		});
+		expect(html).toContain('<aside class="admonition note">');
+		expect(html).toContain('class="admonition-title"');
+	});
+
 	test("math dollars inline", () => {
 		expect(
 			mdToHtml("Inline $x^2$ here", { extension: { mathDollars: true } }),
@@ -165,6 +321,66 @@ describe("extensions", () => {
 		expect(
 			mdToHtml("$$\nE = mc^2\n$$", { extension: { mathDollars: true } }),
 		).toContain('data-math-style="display"');
+	});
+
+	test("LaTeX math delimiters", () => {
+		const html = mdToHtml(String.raw`Inline \(x^2\) and \[E = mc^2\]`, {
+			extension: { mathLatex: true },
+		});
+		expect(html).toContain('<span data-math-style="inline">x^2</span>');
+		expect(html).toContain('<span data-math-style="display">E = mc^2</span>');
+	});
+
+	test("block directives", () => {
+		const html = mdToHtml(":::warning\nRead this.\n:::", {
+			extension: { blockDirective: true },
+		});
+		expect(html).toContain('<div class="warning">');
+		expect(html).toContain("<p>Read this.</p>");
+	});
+
+	test("block directives preserve text and ANSI content", () => {
+		const markdown = ":::warning\nRead this.\n:::";
+		const options = { extension: { blockDirective: true } };
+
+		expect(mdToText(markdown, options)).toBe("Read this.");
+		expect(mdToAnsi(markdown, options)).toBe("Read this.");
+	});
+
+	test("heading attributes are parsed", () => {
+		const html = mdToHtml("# Hi! {#greeting}", {
+			extension: { headerAttributes: true },
+		});
+		expect(html).toBe("<h1>Hi!</h1>\n");
+	});
+
+	test("fenced code attributes are removed from the parsed info string", () => {
+		const markdown = "```rust {#example}\nfn main() {}\n```";
+		const unparsed = mdToHtml(markdown, {
+			render: { fullInfoString: true },
+		});
+		const parsed = mdToHtml(markdown, {
+			extension: { fencedCodeAttributes: true },
+			render: { fullInfoString: true },
+		});
+
+		expect(unparsed).toContain('data-meta="{#example}"');
+		expect(parsed).not.toContain("data-meta");
+	});
+
+	test("inline code attributes are parsed", () => {
+		const html = mdToHtml("`const`{.typescript}", {
+			extension: { inlineCodeAttributes: true },
+		});
+		expect(html).toBe("<p><code>const</code></p>\n");
+	});
+
+	test("link attributes are parsed", () => {
+		const html = mdToHtml("[Comrak](https://github.com){rel=nofollow}", {
+			extension: { linkAttributes: true },
+		});
+		expect(html).toContain('<a href="https://github.com">Comrak</a>');
+		expect(html).not.toContain("rel=nofollow");
 	});
 
 	test("superscript", () => {
@@ -203,6 +419,14 @@ describe("extensions", () => {
 		).toContain('id="sec-hello"');
 	});
 
+	test("headerIdPrefix uses Comrak 0.54 accessible anchor markup", () => {
+		expect(mdToHtml("# Hello", { extension: { headerIdPrefix: "sec-" } })).toBe(
+			'<h1 id="sec-hello">Hello<a href="#hello" ' +
+				'aria-label="Link to heading \'Hello\'" data-heading-content="Hello" ' +
+				'class="anchor"></a></h1>\n',
+		);
+	});
+
 	test("headerIdPrefixInHref adds prefix to href", () => {
 		const html = mdToHtml("# Hello", {
 			extension: { headerIdPrefix: "sec-", headerIdPrefixInHref: true },
@@ -217,6 +441,16 @@ describe("extensions", () => {
 		});
 		expect(html).toContain('id="sec-hello"');
 		expect(html).toContain('href="#hello"');
+	});
+
+	test("sourceposChars counts Unicode characters", () => {
+		const byteColumns = mdToHtml("好", { render: { sourcepos: true } });
+		const charColumns = mdToHtml("好", {
+			parse: { sourceposChars: true },
+			render: { sourcepos: true },
+		});
+		expect(byteColumns).toContain('data-sourcepos="1:1-1:3"');
+		expect(charColumns).toContain('data-sourcepos="1:1-1:1"');
 	});
 
 	test("description lists", () => {
@@ -274,6 +508,18 @@ describe("commonmark", () => {
 		expect(
 			mdToCommonmark("- item\n", { render: { listStyle: "plus" } }),
 		).toContain("+ item");
+	});
+
+	test("escapes literal strikethrough delimiters", () => {
+		expect(mdToCommonmark("~~text~~", {})).toBe("\\~\\~text\\~\\~\n");
+	});
+
+	test("preserves whitespace entities at emphasis boundaries", () => {
+		expect(mdToCommonmark("**Hello&#32;**", {})).toBe("**Hello&#32;**\n");
+	});
+
+	test("formats malformed ordered lists in blockquotes without crashing", () => {
+		expect(mdToCommonmark(">9)\r\u000b", {})).toBe("> 9) \n\n&#11;\n");
 	});
 });
 
@@ -365,6 +611,79 @@ describe("syntax highlighter", () => {
 		expect(html).toContain("<del>deleted</del>");
 		expect(html).toContain("<mark>code");
 	});
+
+	test("reuses one adapter across render calls", () => {
+		const highlighter = new SyntaxHighlighter(
+			(code: string) => `<mark>${code}</mark>`,
+			() => "<pre>",
+			() => "<code>",
+		);
+
+		const first = mdToHtmlWithPlugins("```js\none\n```", {}, highlighter);
+		const second = mdToHtmlWithPlugins("```js\ntwo\n```", {}, highlighter);
+
+		expect(first).toContain("<mark>one\n</mark>");
+		expect(second).toContain("<mark>two\n</mark>");
+	});
+
+	test.each(
+		invalidStringCallbacks,
+	)("falls back safely when every callback $description", ({ callback }) => {
+		const highlighter = new SyntaxHighlighter(callback, callback, callback);
+
+		expect(mdToHtmlWithPlugins("```js\n<tag>\n```", {}, highlighter)).toBe(
+			'<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n',
+		);
+	});
+
+	test("Shiki adapter escapes code when highlighting fails", () => {
+		const failingShiki: ShikiHighlighter = {
+			codeToHtml() {
+				throw new Error("unknown language");
+			},
+		};
+		const adapter = createShikiAdapter(SyntaxHighlighter, failingShiki, {
+			name: "github-dark",
+			bg: "#24292e",
+			fg: "#e1e4e8",
+		});
+		const html = mdToHtmlWithPlugins(
+			"```unknown\n</code><img src=x onerror=alert(1)>\n```",
+			{},
+			adapter,
+		);
+
+		expect(html).not.toContain("<img");
+		expect(html).toContain("&lt;/code&gt;&lt;img src=x onerror=alert(1)&gt;");
+	});
+
+	test("Shiki adapter preserves Comrak formatter attributes", () => {
+		const shiki: ShikiHighlighter = {
+			codeToHtml(code) {
+				return `<pre><code><span>${code}</span></code></pre>`;
+			},
+		};
+		const adapter = createShikiAdapter(SyntaxHighlighter, shiki, {
+			name: "github-dark",
+			bg: "#24292e",
+			fg: "#e1e4e8",
+		});
+		const html = mdToHtmlWithPlugins(
+			"```js metadata\nconst x = 1;\n```",
+			{
+				render: {
+					fullInfoString: true,
+					githubPreLang: true,
+					sourcepos: true,
+				},
+			},
+			adapter,
+		);
+
+		expect(html).toMatch(/<pre[^>]*lang="js"/);
+		expect(html).toMatch(/<pre[^>]*data-meta="metadata"/);
+		expect(html).toMatch(/<pre[^>]*data-sourcepos=/);
+	});
 });
 
 // --- Heading Adapter ---
@@ -423,6 +742,29 @@ describe("heading adapter", () => {
 		expect(html).toContain('id="custom"');
 		expect(html).toContain("<em>code");
 	});
+
+	test("reuses one adapter across render calls", () => {
+		const adapter = new HeadingAdapter(
+			(heading: HeadingMeta) => `<h${heading.level} class="reused">`,
+			(heading: HeadingMeta) => `</h${heading.level}>`,
+		);
+
+		const first = mdToHtmlWithPlugins("# One", {}, null, adapter);
+		const second = mdToHtmlWithPlugins("## Two", {}, null, adapter);
+
+		expect(first).toBe('<h1 class="reused">One</h1>');
+		expect(second).toBe('<h2 class="reused">Two</h2>');
+	});
+
+	test.each(
+		invalidStringCallbacks,
+	)("falls back safely when both callbacks $description", ({ callback }) => {
+		const adapter = new HeadingAdapter(callback, callback);
+
+		expect(mdToHtmlWithPlugins("# Hello", {}, null, adapter)).toBe(
+			"<h1>Hello</h1>",
+		);
+	});
 });
 
 // --- XML ---
@@ -443,14 +785,17 @@ describe("xml", () => {
 		expect(mdToXml("", {})).toContain("<?xml");
 	});
 
-	test("with heading adapter", () => {
+	test("deprecated plugin alias leaves adapters reusable", () => {
 		const ha = new HeadingAdapter(
-			(heading: HeadingMeta) => `<h${heading.level}>`,
+			(heading: HeadingMeta) => `<h${heading.level} class="reused">`,
 			(heading: HeadingMeta) => `</h${heading.level}>`,
 		);
 		const xml = mdToXmlWithPlugins("# Hello", {}, null, ha);
 		expect(xml).toContain("<?xml");
 		expect(xml).toContain("Hello");
+		expect(mdToHtmlWithPlugins("# Still reusable", {}, null, ha)).toContain(
+			'class="reused"',
+		);
 	});
 });
 
@@ -520,6 +865,67 @@ describe("codefence renderer", () => {
 		expect(html).toContain('class="mermaid"');
 		expect(html).toContain("<em>code");
 	});
+
+	test("reuses one renderer map across render calls", () => {
+		const renderers = {
+			mermaid: (lang: string, _meta: string, code: string) =>
+				`<figure data-lang="${lang}">${code}</figure>`,
+		};
+
+		const first = mdToHtmlWithCodefenceRenderers(
+			"```mermaid\nfirst\n```",
+			{},
+			renderers,
+		);
+		const second = mdToHtmlWithCodefenceRenderers(
+			"```mermaid\nsecond\n```",
+			{},
+			renderers,
+		);
+
+		expect(first).toContain('<figure data-lang="mermaid">first\n</figure>');
+		expect(second).toContain('<figure data-lang="mermaid">second\n</figure>');
+	});
+
+	test("reuses one syntax adapter across codefence renderer calls", () => {
+		const highlighter = new SyntaxHighlighter(
+			(code: string) => `<mark>${code}</mark>`,
+			() => "<pre>",
+			() => "<code>",
+		);
+
+		const first = mdToHtmlWithCodefenceRenderers(
+			"```js\nfirst\n```",
+			{},
+			{},
+			highlighter,
+		);
+		const second = mdToHtmlWithCodefenceRenderers(
+			"```js\nsecond\n```",
+			{},
+			{},
+			highlighter,
+		);
+
+		expect(first).toContain("<mark>first\n</mark>");
+		expect(second).toContain("<mark>second\n</mark>");
+	});
+
+	test.each(
+		invalidStringCallbacks,
+	)("falls back safely when the renderer callback $description", ({
+		callback,
+	}) => {
+		expect(
+			mdToHtmlWithCodefenceRenderers(
+				"```js\n<tag>\n```",
+				{},
+				{
+					js: callback,
+				},
+			),
+		).toBe('<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n');
+	});
 });
 
 // --- URL Rewriter ---
@@ -565,6 +971,20 @@ describe("url rewriter", () => {
 		);
 		expect(html).toContain('src="http://example.com/img.png"');
 		expect(html).toContain('href="http://example.com"');
+	});
+
+	test.each(
+		invalidStringCallbacks,
+	)("keeps original URLs when callbacks $description", ({ callback }) => {
+		const html = mdToHtmlWithRewriters(
+			"![image](https://example.com/image.png)\n\n[link](https://example.com)",
+			{},
+			callback,
+			callback,
+		);
+
+		expect(html).toContain('src="https://example.com/image.png"');
+		expect(html).toContain('href="https://example.com"');
 	});
 });
 
@@ -724,6 +1144,19 @@ describe("text", () => {
 		expect(text).toContain("┘");
 	});
 
+	test("table columns use terminal width for CJK and combining characters", () => {
+		const markdown = "| a | b |\n|---|---|\n| 好好 | 1 |\n| é | 2 |";
+
+		expect(
+			mdToText(markdown, { extension: { table: true } }, false, false, ""),
+		).toBe(`┌──────┬─────┐
+│ a    │ b   │
+├──────┼─────┤
+│ 好好 │ 1   │
+│ é    │ 2   │
+└──────┴─────┘`);
+	});
+
 	// --- Links ---
 	test("links hide URLs by default", () => {
 		expect(mdToText("[click](https://example.com)", {})).toBe("click");
@@ -837,6 +1270,31 @@ describe("ansi", () => {
 		expect(ansi).toContain("┘");
 	});
 
+	test("OSC hyperlink URLs containing m do not affect table width", () => {
+		const ansi = mdToAnsi(
+			"| link | x |\n|---|---|\n| [go](https://example.com/more) | y |",
+			{ extension: { table: true } },
+			{ hyperlinks: true, showUrls: false, tableShadow: "" },
+		);
+
+		expect(ansi).toContain("\x1b]8;;https://example.com/more\x1b\\");
+		expect(ansi).toContain("┌──────┬─────┐");
+
+		const renderLinkedTable = (url: string) =>
+			mdToAnsi(
+				`| link | x |\n|---|---|\n| [go](${url}) | y |`,
+				{ extension: { table: true } },
+				{ hyperlinks: true, showUrls: false, tableShadow: "" },
+			);
+		const withoutTerminatorLetter = renderLinkedTable(
+			`https://example.com/${"x".repeat(256)}`,
+		);
+		const withTerminatorLetter = renderLinkedTable(
+			`https://example.com/${"m".repeat(256)}`,
+		);
+		expect(withTerminatorLetter.length).toBe(withoutTerminatorLetter.length);
+	});
+
 	test("plain text has no escape codes", () => {
 		expect(mdToAnsi("just text", {})).not.toContain("\x1b[");
 	});
@@ -861,15 +1319,92 @@ describe("ansi", () => {
 		expect(ansi).toContain("bold");
 	});
 
-	test("dark and light themes return valid objects", () => {
-		expect(ansiThemeDark().heading).toBeDefined();
-		expect(ansiThemeLight().heading).toBeDefined();
+	test("rejects malformed ANSI themes", () => {
+		const renderWithUncheckedTheme = mdToAnsi as unknown as (
+			markdown: string,
+			options: unknown,
+			theme: unknown,
+		) => string;
+
+		expect(() => renderWithUncheckedTheme("hello", {}, { bold: 42 })).toThrow(
+			/invalid ANSI theme/,
+		);
+	});
+
+	test("dark, light, and automatic themes use exact palette values", () => {
+		expect(ansiThemeDark().heading).toBe("\x1b[1;34m");
+		expect(ansiThemeDark().code).toBe("\x1b[48;5;236m\x1b[38;5;215m");
+		expect(ansiThemeLight().heading).toBe("\x1b[1;34m");
+		expect(ansiThemeLight().code).toBe("\x1b[48;5;254m\x1b[38;5;124m");
+		expect(detectColorScheme("0;15")).toBe("light");
+		expect(detectColorScheme("15;0")).toBe("dark");
+		expect(ansiThemeAuto("0;15")).toEqual(ansiThemeLight());
+		expect(ansiThemeAuto("15;0")).toEqual(ansiThemeDark());
+	});
+});
+
+// --- Walker Limits ---
+
+describe("walker limits", () => {
+	test.each([
+		{ name: "text", render: (markdown: string) => mdToText(markdown, {}) },
+		{ name: "ANSI", render: (markdown: string) => mdToAnsi(markdown, {}) },
+	])("$name output rejects excessive nesting with a RangeError", ({
+		render,
+	}) => {
+		const markdown = `${"> ".repeat(600)}deep`;
+		const renderDeeplyNestedMarkdown = () => render(markdown);
+
+		expect(renderDeeplyNestedMarkdown).toThrow(RangeError);
+		expect(renderDeeplyNestedMarkdown).toThrow(
+			"markdown nesting exceeds the text/ANSI limit of 512",
+		);
 	});
 });
 
 // --- Heal Markdown ---
 
 describe("heal", () => {
+	test("property: healing is idempotent", () => {
+		const markdownFragment = fc.constantFrom(
+			"plain",
+			" ",
+			"\n",
+			"*",
+			"**",
+			"_",
+			"__",
+			"~",
+			"~~",
+			"`",
+			"```",
+			"$",
+			"$$",
+			"[",
+			"]",
+			"(",
+			")",
+			"<",
+			">",
+			"\\",
+			"\u200B",
+			"好",
+			"🌍",
+		);
+		const markdown = fc
+			.array(markdownFragment, { maxLength: 64 })
+			.map((fragments) => fragments.join(""));
+
+		fc.assert(
+			fc.property(markdown, (input) => {
+				const healed = healMarkdown(input);
+
+				expect(healMarkdown(healed)).toBe(healed);
+			}),
+			{ numRuns: 500, seed: 49_316 },
+		);
+	});
+
 	test("closes unclosed bold", () => {
 		expect(healMarkdown("**bold")).toBe("**bold**");
 	});
@@ -1067,7 +1602,7 @@ describe("memory", () => {
 	}
 
 	// Asserts the WASM heap grows by at most one 64 KiB page across 1000 calls.
-	function expectNoLeak(fn: () => void): void {
+	function expectBoundedWasmGrowth(fn: () => void): void {
 		for (let i = 0; i < 10; i++) fn(); // warm up
 		const before = getWasmPages();
 		for (let i = 0; i < 1000; i++) fn();
@@ -1075,25 +1610,25 @@ describe("memory", () => {
 		expect(after - before).toBeLessThanOrEqual(1);
 	}
 
-	test("mdToHtml does not leak memory over repeated calls", () => {
-		expectNoLeak(() => mdToHtml(md, opts));
+	test("mdToHtml keeps Wasm high-water growth bounded", () => {
+		expectBoundedWasmGrowth(() => mdToHtml(md, opts));
 	});
 
-	test("mdToText does not leak memory over repeated calls", () => {
-		expectNoLeak(() => mdToText(md, opts));
+	test("mdToText keeps Wasm high-water growth bounded", () => {
+		expectBoundedWasmGrowth(() => mdToText(md, opts));
 	});
 
-	test("mdToAnsi does not leak memory over repeated calls", () => {
-		expectNoLeak(() => mdToAnsi(md, opts));
+	test("mdToAnsi keeps Wasm high-water growth bounded", () => {
+		expectBoundedWasmGrowth(() => mdToAnsi(md, opts));
 	});
 
-	test("healMarkdown does not leak memory over repeated calls", () => {
+	test("healMarkdown keeps Wasm high-water growth bounded", () => {
 		const incomplete = "**bold\n```js\ncode\n~~strike";
-		expectNoLeak(() => healMarkdown(incomplete));
+		expectBoundedWasmGrowth(() => healMarkdown(incomplete));
 	});
 
-	test("mdToHtmlWithPlugins does not leak memory over repeated calls", () => {
-		expectNoLeak(() => {
+	test("plugin rendering keeps Wasm high-water growth bounded", () => {
+		expectBoundedWasmGrowth(() => {
 			const sh = new SyntaxHighlighter(
 				(code: string) => code,
 				() => "<pre>",

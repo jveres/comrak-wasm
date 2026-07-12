@@ -14,15 +14,18 @@ use comrak::adapters::{
 };
 use comrak::options::Plugins;
 use comrak::{
-    markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_commonmark_xml_with_plugins,
-    markdown_to_html, markdown_to_html_with_plugins, parse_document, Arena,
+    markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html,
+    markdown_to_html_with_plugins, parse_document, Arena,
 };
-use std::sync::Arc;
 use js_sys::Function;
 use serde::Deserialize;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
+compile_error!("comrak-wasm does not support threaded Wasm; build without target_feature=atomics");
+
+#[cfg(all(target_arch = "wasm32", not(target_feature = "atomics")))]
 #[global_allocator]
 static ALLOCATOR: lol_alloc::AssumeSingleThreaded<lol_alloc::FreeListAllocator> =
     unsafe { lol_alloc::AssumeSingleThreaded::new(lol_alloc::FreeListAllocator::new()) };
@@ -46,6 +49,7 @@ struct ExtensionOptions {
     multiline_block_quotes: Option<bool>,
     alerts: Option<bool>,
     math_dollars: Option<bool>,
+    math_latex: Option<bool>,
     math_code: Option<bool>,
     shortcodes: Option<bool>,
     wikilinks_title_after_pipe: Option<bool>,
@@ -59,6 +63,11 @@ struct ExtensionOptions {
     highlight: Option<bool>,
     insert: Option<bool>,
     phoenix_heex: Option<bool>,
+    block_directive: Option<bool>,
+    header_attributes: Option<bool>,
+    fenced_code_attributes: Option<bool>,
+    inline_code_attributes: Option<bool>,
+    link_attributes: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -72,6 +81,7 @@ struct ParseOptions {
     ignore_setext: Option<bool>,
     leave_footnote_definitions: Option<bool>,
     escaped_char_spans: Option<bool>,
+    sourcepos_chars: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -84,7 +94,7 @@ struct RenderOptions {
     #[serde(rename = "unsafe")]
     unsafe_: Option<bool>,
     escape: Option<bool>,
-    list_style: Option<String>,
+    list_style: Option<ListStyle>,
     sourcepos: Option<bool>,
     escaped_char_spans: Option<bool>,
     ignore_empty_links: Option<bool>,
@@ -92,9 +102,25 @@ struct RenderOptions {
     prefer_fenced: Option<bool>,
     figure_with_caption: Option<bool>,
     tasklist_classes: Option<bool>,
+    alert_style: Option<AlertStyle>,
     ol_width: Option<usize>,
     experimental_minimize_commonmark: Option<bool>,
     compact_html: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ListStyle {
+    Dash,
+    Plus,
+    Star,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum AlertStyle {
+    Specific,
+    Semantic,
 }
 
 #[derive(Deserialize, Default)]
@@ -127,6 +153,7 @@ fn build_options(opts: ComrakOptions) -> comrak::Options<'static> {
         set_bool!(multiline_block_quotes);
         set_bool!(alerts);
         set_bool!(math_dollars);
+        set_bool!(math_latex);
         set_bool!(math_code);
         set_bool!(shortcodes);
         set_bool!(wikilinks_title_after_pipe);
@@ -140,6 +167,11 @@ fn build_options(opts: ComrakOptions) -> comrak::Options<'static> {
         set_bool!(highlight);
         set_bool!(insert);
         set_bool!(phoenix_heex);
+        set_bool!(block_directive);
+        set_bool!(header_attributes);
+        set_bool!(fenced_code_attributes);
+        set_bool!(inline_code_attributes);
+        set_bool!(link_attributes);
 
         // header_id_prefix is the new name; header_ids is kept for backward compat
         if let Some(v) = ext.header_id_prefix.or(ext.header_ids) {
@@ -168,6 +200,7 @@ fn build_options(opts: ComrakOptions) -> comrak::Options<'static> {
         set_bool!(ignore_setext);
         set_bool!(leave_footnote_definitions);
         set_bool!(escaped_char_spans);
+        set_bool!(sourcepos_chars);
 
         if let Some(v) = parse.default_info_string {
             options.parse.default_info_string = Some(v);
@@ -203,10 +236,16 @@ fn build_options(opts: ComrakOptions) -> comrak::Options<'static> {
             options.render.width = v;
         }
         if let Some(v) = render.list_style {
-            options.render.list_style = match v.as_str() {
-                "plus" => comrak::options::ListStyleType::Plus,
-                "star" => comrak::options::ListStyleType::Star,
-                _ => comrak::options::ListStyleType::Dash,
+            options.render.list_style = match v {
+                ListStyle::Dash => comrak::options::ListStyleType::Dash,
+                ListStyle::Plus => comrak::options::ListStyleType::Plus,
+                ListStyle::Star => comrak::options::ListStyleType::Star,
+            };
+        }
+        if let Some(v) = render.alert_style {
+            options.render.alert_style = match v {
+                AlertStyle::Specific => comrak::options::AlertStyleType::Specific,
+                AlertStyle::Semantic => comrak::options::AlertStyleType::Semantic,
             };
         }
         if let Some(v) = render.ol_width {
@@ -218,13 +257,14 @@ fn build_options(opts: ComrakOptions) -> comrak::Options<'static> {
 }
 
 /// Parse a JS options object into `ComrakOptions`. A missing/`null`/`undefined`
-/// value yields defaults; a malformed object also falls back to defaults rather
-/// than erroring, keeping the JS API forgiving (callers may pass partial options).
-fn parse_options(val: JsValue) -> ComrakOptions {
+/// value yields defaults. Malformed fields throw a JavaScript exception instead
+/// of silently discarding otherwise valid options.
+fn parse_options(val: JsValue) -> Result<ComrakOptions, JsValue> {
     if val.is_undefined() || val.is_null() {
-        ComrakOptions::default()
+        Ok(ComrakOptions::default())
     } else {
-        serde_wasm_bindgen::from_value(val).unwrap_or_default()
+        serde_wasm_bindgen::from_value(val)
+            .map_err(|error| js_sys::Error::new(&format!("invalid comrak options: {error}")).into())
     }
 }
 
@@ -234,15 +274,15 @@ pub fn comrak_version() -> String {
 }
 
 #[wasm_bindgen(js_name = mdToHtml)]
-pub fn md_to_html(md: &str, options: JsValue) -> String {
-    let opts = build_options(parse_options(options));
-    markdown_to_html(md, &opts)
+pub fn md_to_html(md: &str, options: JsValue) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
+    Ok(markdown_to_html(md, &opts))
 }
 
 #[wasm_bindgen(js_name = mdToCommonmark)]
-pub fn md_to_commonmark(md: &str, options: JsValue) -> String {
-    let opts = build_options(parse_options(options));
-    markdown_to_commonmark(md, &opts)
+pub fn md_to_commonmark(md: &str, options: JsValue) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
+    Ok(markdown_to_commonmark(md, &opts))
 }
 
 // --- Syntax Highlighter Adapter ---
@@ -254,10 +294,6 @@ pub struct SyntaxHighlighter {
     code: Function,
 }
 
-// SAFETY: WASM is single-threaded; Function is not Send/Sync but cannot be
-// accessed from multiple threads in a WASM environment.
-unsafe impl Send for SyntaxHighlighter {}
-unsafe impl Sync for SyntaxHighlighter {}
 impl std::panic::RefUnwindSafe for SyntaxHighlighter {}
 
 #[wasm_bindgen]
@@ -268,6 +304,15 @@ impl SyntaxHighlighter {
             highlight,
             pre,
             code,
+        }
+    }
+
+    #[wasm_bindgen(js_name = clone)]
+    pub fn clone_js(&self) -> Self {
+        Self {
+            highlight: self.highlight.clone(),
+            pre: self.pre.clone(),
+            code: self.code.clone(),
         }
     }
 }
@@ -285,13 +330,15 @@ impl ComrakSyntaxHighlighterAdapter for SyntaxHighlighter {
             Some(l) => JsValue::from_str(l),
             None => JsValue::undefined(),
         };
-        let result = self.highlight.call2(&this, &js_code, &js_lang);
-        if let Ok(val) = result {
-            if let Some(s) = val.as_string() {
-                return output.write_str(&s);
-            }
+        if let Some(value) = self
+            .highlight
+            .call2(&this, &js_code, &js_lang)
+            .ok()
+            .and_then(|value| value.as_string())
+        {
+            return output.write_str(&value);
         }
-        Ok(())
+        comrak::html::escape(output, code)
     }
 
     fn write_pre_tag(
@@ -302,20 +349,17 @@ impl ComrakSyntaxHighlighterAdapter for SyntaxHighlighter {
         let this = JsValue::null();
         let js_attrs = js_sys::Object::new();
         for (k, v) in &attributes {
-            js_sys::Reflect::set(
-                &js_attrs,
-                &JsValue::from_str(k),
-                &JsValue::from_str(v),
-            )
-            .ok();
+            js_sys::Reflect::set(&js_attrs, &JsValue::from_str(k), &JsValue::from_str(v)).ok();
         }
-        let result = self.pre.call1(&this, &js_attrs);
-        if let Ok(val) = result {
-            if let Some(s) = val.as_string() {
-                return output.write_str(&s);
-            }
+        if let Some(value) = self
+            .pre
+            .call1(&this, &js_attrs)
+            .ok()
+            .and_then(|value| value.as_string())
+        {
+            return output.write_str(&value);
         }
-        Ok(())
+        comrak::html::write_opening_tag(output, "pre", attributes)
     }
 
     fn write_code_tag(
@@ -326,20 +370,17 @@ impl ComrakSyntaxHighlighterAdapter for SyntaxHighlighter {
         let this = JsValue::null();
         let js_attrs = js_sys::Object::new();
         for (k, v) in &attributes {
-            js_sys::Reflect::set(
-                &js_attrs,
-                &JsValue::from_str(k),
-                &JsValue::from_str(v),
-            )
-            .ok();
+            js_sys::Reflect::set(&js_attrs, &JsValue::from_str(k), &JsValue::from_str(v)).ok();
         }
-        let result = self.code.call1(&this, &js_attrs);
-        if let Ok(val) = result {
-            if let Some(s) = val.as_string() {
-                return output.write_str(&s);
-            }
+        if let Some(value) = self
+            .code
+            .call1(&this, &js_attrs)
+            .ok()
+            .and_then(|value| value.as_string())
+        {
+            return output.write_str(&value);
         }
-        Ok(())
+        comrak::html::write_opening_tag(output, "code", attributes)
     }
 }
 
@@ -351,8 +392,6 @@ pub struct HeadingAdapter {
     exit: Function,
 }
 
-unsafe impl Send for HeadingAdapter {}
-unsafe impl Sync for HeadingAdapter {}
 impl std::panic::RefUnwindSafe for HeadingAdapter {}
 
 #[wasm_bindgen]
@@ -360,6 +399,14 @@ impl HeadingAdapter {
     #[wasm_bindgen(constructor)]
     pub fn new(enter: Function, exit: Function) -> Self {
         Self { enter, exit }
+    }
+
+    #[wasm_bindgen(js_name = clone)]
+    pub fn clone_js(&self) -> Self {
+        Self {
+            enter: self.enter.clone(),
+            exit: self.exit.clone(),
+        }
     }
 }
 
@@ -384,13 +431,15 @@ impl ComrakHeadingAdapter for HeadingAdapter {
             &JsValue::from_str(&heading.content),
         )
         .ok();
-        let result = self.enter.call1(&this, &js_heading);
-        if let Ok(val) = result {
-            if let Some(s) = val.as_string() {
-                return output.write_str(&s);
-            }
+        if let Some(value) = self
+            .enter
+            .call1(&this, &js_heading)
+            .ok()
+            .and_then(|value| value.as_string())
+        {
+            return output.write_str(&value);
         }
-        Ok(())
+        write!(output, "<h{}>", heading.level)
     }
 
     fn exit(&self, output: &mut dyn fmt::Write, heading: &HeadingMeta) -> fmt::Result {
@@ -408,13 +457,15 @@ impl ComrakHeadingAdapter for HeadingAdapter {
             &JsValue::from_str(&heading.content),
         )
         .ok();
-        let result = self.exit.call1(&this, &js_heading);
-        if let Ok(val) = result {
-            if let Some(s) = val.as_string() {
-                return output.write_str(&s);
-            }
+        if let Some(value) = self
+            .exit
+            .call1(&this, &js_heading)
+            .ok()
+            .and_then(|value| value.as_string())
+        {
+            return output.write_str(&value);
         }
-        Ok(())
+        write!(output, "</h{}>", heading.level)
     }
 }
 
@@ -423,8 +474,8 @@ impl ComrakHeadingAdapter for HeadingAdapter {
 /// Build `Plugins` wired with the optional syntax-highlighter and heading
 /// adapters. The result borrows from both adapters, so they must outlive it.
 fn build_plugins<'a>(
-    syntax_highlighter: &'a Option<SyntaxHighlighter>,
-    heading_adapter: &'a Option<HeadingAdapter>,
+    syntax_highlighter: Option<&'a SyntaxHighlighter>,
+    heading_adapter: Option<&'a HeadingAdapter>,
 ) -> Plugins<'a> {
     let mut plugins = Plugins::default();
     if let Some(sh) = syntax_highlighter {
@@ -436,36 +487,24 @@ fn build_plugins<'a>(
     plugins
 }
 
-#[wasm_bindgen(js_name = mdToHtmlWithPlugins)]
+#[wasm_bindgen(js_name = __mdToHtmlWithPluginsOwned)]
 pub fn md_to_html_with_plugins_js(
     md: &str,
     options: JsValue,
     syntax_highlighter: Option<SyntaxHighlighter>,
     heading_adapter: Option<HeadingAdapter>,
-) -> String {
-    let opts = build_options(parse_options(options));
-    let plugins = build_plugins(&syntax_highlighter, &heading_adapter);
-    markdown_to_html_with_plugins(md, &opts, &plugins)
+) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
+    let plugins = build_plugins(syntax_highlighter.as_ref(), heading_adapter.as_ref());
+    Ok(markdown_to_html_with_plugins(md, &opts, &plugins))
 }
 
 // --- XML output ---
 
 #[wasm_bindgen(js_name = mdToXml)]
-pub fn md_to_xml(md: &str, options: JsValue) -> String {
-    let opts = build_options(parse_options(options));
-    markdown_to_commonmark_xml(md, &opts)
-}
-
-#[wasm_bindgen(js_name = mdToXmlWithPlugins)]
-pub fn md_to_xml_with_plugins_js(
-    md: &str,
-    options: JsValue,
-    syntax_highlighter: Option<SyntaxHighlighter>,
-    heading_adapter: Option<HeadingAdapter>,
-) -> String {
-    let opts = build_options(parse_options(options));
-    let plugins = build_plugins(&syntax_highlighter, &heading_adapter);
-    markdown_to_commonmark_xml_with_plugins(md, &opts, &plugins)
+pub fn md_to_xml(md: &str, options: JsValue) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
+    Ok(markdown_to_commonmark_xml(md, &opts))
 }
 
 // --- Codefence Renderer Adapter ---
@@ -475,8 +514,6 @@ pub struct CodefenceRenderer {
     write_fn: Function,
 }
 
-unsafe impl Send for CodefenceRenderer {}
-unsafe impl Sync for CodefenceRenderer {}
 impl std::panic::RefUnwindSafe for CodefenceRenderer {}
 
 #[wasm_bindgen]
@@ -501,25 +538,36 @@ impl ComrakCodefenceRendererAdapter for CodefenceRenderer {
         let js_meta = JsValue::from_str(meta);
         let js_code = JsValue::from_str(code);
         let args = js_sys::Array::of3(&js_lang, &js_meta, &js_code);
-        let result = self.write_fn.apply(&this, &args);
-        if let Ok(val) = result {
-            if let Some(s) = val.as_string() {
-                return output.write_str(&s);
-            }
+        if let Some(value) = self
+            .write_fn
+            .apply(&this, &args)
+            .ok()
+            .and_then(|value| value.as_string())
+        {
+            return output.write_str(&value);
         }
-        Ok(())
+
+        comrak::html::write_opening_tag(output, "pre", std::iter::empty::<(&str, &str)>())?;
+        let class = (!lang.is_empty()).then(|| format!("language-{lang}"));
+        comrak::html::write_opening_tag(
+            output,
+            "code",
+            class.as_deref().map(|value| ("class", value)),
+        )?;
+        comrak::html::escape(output, code)?;
+        output.write_str("</code></pre>\n")
     }
 }
 
-#[wasm_bindgen(js_name = mdToHtmlWithCodefenceRenderers)]
+#[wasm_bindgen(js_name = __mdToHtmlWithCodefenceRenderersOwned)]
 pub fn md_to_html_with_codefence_renderers(
     md: &str,
     options: JsValue,
     renderers: JsValue,
     syntax_highlighter: Option<SyntaxHighlighter>,
     heading_adapter: Option<HeadingAdapter>,
-) -> String {
-    let opts = build_options(parse_options(options));
+) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
 
     // Parse codefence renderers from JS object { lang: Function } first, so the
     // Vec outlives the Plugins that borrows from it.
@@ -541,7 +589,7 @@ pub fn md_to_html_with_codefence_renderers(
         }
     }
 
-    let mut plugins = build_plugins(&syntax_highlighter, &heading_adapter);
+    let mut plugins = build_plugins(syntax_highlighter.as_ref(), heading_adapter.as_ref());
     for (lang, renderer) in &cf_renderers {
         plugins
             .render
@@ -549,7 +597,7 @@ pub fn md_to_html_with_codefence_renderers(
             .insert(lang.clone(), renderer);
     }
 
-    markdown_to_html_with_plugins(md, &opts, &plugins)
+    Ok(markdown_to_html_with_plugins(md, &opts, &plugins))
 }
 
 // --- URL Rewriter ---
@@ -558,8 +606,6 @@ struct JsUrlRewriter {
     rewrite_fn: Function,
 }
 
-unsafe impl Send for JsUrlRewriter {}
-unsafe impl Sync for JsUrlRewriter {}
 impl std::panic::RefUnwindSafe for JsUrlRewriter {}
 
 impl comrak::options::URLRewriter for JsUrlRewriter {
@@ -582,8 +628,8 @@ pub fn md_to_html_with_rewriters(
     options: JsValue,
     image_url_rewriter: JsValue,
     link_url_rewriter: JsValue,
-) -> String {
-    let mut opts = build_options(parse_options(options));
+) -> Result<String, JsValue> {
+    let mut opts = build_options(parse_options(options)?);
 
     if !image_url_rewriter.is_null() && !image_url_rewriter.is_undefined() {
         if let Ok(f) = image_url_rewriter.dyn_into::<Function>() {
@@ -596,7 +642,7 @@ pub fn md_to_html_with_rewriters(
         }
     }
 
-    markdown_to_html(md, &opts)
+    Ok(markdown_to_html(md, &opts))
 }
 
 // --- Text output ---
@@ -608,33 +654,56 @@ pub fn md_to_text(
     show_urls: Option<bool>,
     show_markdown: Option<bool>,
     table_shadow: Option<String>,
-) -> String {
-    let opts = build_options(parse_options(options));
+) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
     let arena = Arena::new();
     let root = parse_document(&arena, md, &opts);
+    ensure_walker_depth(root)?;
     let shadow = match table_shadow {
         Some(ref s) if s.is_empty() => None,
         Some(s) => Some(s),
         None => Some("░".into()),
     };
-    text::format_text(root, show_urls.unwrap_or(false), show_markdown.unwrap_or(false), shadow)
+    Ok(text::format_text(
+        root,
+        show_urls.unwrap_or(false),
+        show_markdown.unwrap_or(false),
+        shadow,
+    ))
 }
 
 // --- ANSI output ---
 
 #[wasm_bindgen(js_name = mdToAnsi)]
-pub fn md_to_ansi(md: &str, options: JsValue, theme: JsValue) -> String {
-    let opts = build_options(parse_options(options));
+pub fn md_to_ansi(md: &str, options: JsValue, theme: JsValue) -> Result<String, JsValue> {
+    let opts = build_options(parse_options(options)?);
     let arena = Arena::new();
     let root = parse_document(&arena, md, &opts);
+    ensure_walker_depth(root)?;
 
     let theme = if theme.is_undefined() || theme.is_null() {
         None
     } else {
-        serde_wasm_bindgen::from_value::<ansi::AnsiTheme>(theme).ok()
+        Some(
+            serde_wasm_bindgen::from_value::<ansi::AnsiTheme>(theme).map_err(|error| {
+                JsValue::from(js_sys::Error::new(&format!("invalid ANSI theme: {error}")))
+            })?,
+        )
     };
 
-    ansi::format_ansi(root, theme)
+    Ok(ansi::format_ansi(root, theme))
+}
+
+fn ensure_walker_depth<'a>(root: &'a walker::AstNode<'a>) -> Result<(), JsValue> {
+    if walker::nesting_within_limit(root) {
+        Ok(())
+    } else {
+        Err(js_sys::RangeError::new(&format!(
+            "markdown nesting exceeds the text/ANSI limit of {}",
+            walker::MAX_NESTING_DEPTH
+        ))
+        .into())
+    }
 }
 
 #[wasm_bindgen(js_name = ansiThemeDark)]
@@ -678,8 +747,8 @@ pub fn ansi_theme_auto(colorfgbg: Option<String>) -> JsValue {
 // --- Frontmatter ---
 
 #[wasm_bindgen(js_name = getFrontmatter)]
-pub fn get_frontmatter(md: &str, options: JsValue) -> Option<String> {
-    let opts = build_options(parse_options(options));
+pub fn get_frontmatter(md: &str, options: JsValue) -> Result<Option<String>, JsValue> {
+    let opts = build_options(parse_options(options)?);
     let arena = Arena::new();
     let root = parse_document(&arena, md, &opts);
     // comrak only emits a FrontMatter node when a delimiter is configured, so
@@ -701,12 +770,12 @@ pub fn get_frontmatter(md: &str, options: JsValue) -> Option<String> {
                 .unwrap_or(content)
                 .trim_end_matches('\n');
             if content.is_empty() {
-                return None;
+                return Ok(None);
             }
-            return Some(content.to_string());
+            return Ok(Some(content.to_string()));
         }
     }
-    None
+    Ok(None)
 }
 
 // --- Heal ---
@@ -714,4 +783,44 @@ pub fn get_frontmatter(md: &str, options: JsValue) -> Option<String> {
 #[wasm_bindgen(js_name = healMarkdown)]
 pub fn heal_markdown_js(md: &str) -> String {
     heal::heal_markdown(md)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_options_bridges_comrak_054_fields() {
+        let options = build_options(ComrakOptions {
+            extension: Some(ExtensionOptions {
+                math_latex: Some(true),
+                block_directive: Some(true),
+                header_attributes: Some(true),
+                fenced_code_attributes: Some(true),
+                inline_code_attributes: Some(true),
+                link_attributes: Some(true),
+                ..ExtensionOptions::default()
+            }),
+            parse: Some(ParseOptions {
+                sourcepos_chars: Some(true),
+                ..ParseOptions::default()
+            }),
+            render: Some(RenderOptions {
+                alert_style: Some(AlertStyle::Semantic),
+                ..RenderOptions::default()
+            }),
+        });
+
+        assert!(options.extension.math_latex);
+        assert!(options.extension.block_directive);
+        assert!(options.extension.header_attributes);
+        assert!(options.extension.fenced_code_attributes);
+        assert!(options.extension.inline_code_attributes);
+        assert!(options.extension.link_attributes);
+        assert!(options.parse.sourcepos_chars);
+        assert!(matches!(
+            options.render.alert_style,
+            comrak::options::AlertStyleType::Semantic
+        ));
+    }
 }

@@ -17,7 +17,7 @@ import { createShikiAdapter } from "../shared/shiki-adapter.ts";
 // --- Init WASM ---
 
 const require = createRequire(import.meta.url);
-const wasmPath = require.resolve("comrak-wasm/pkg/comrak.wasm");
+const wasmPath = require.resolve("comrak-wasm/comrak.wasm");
 initSync({ module: await readFile(wasmPath) });
 
 // --- Init Shiki ---

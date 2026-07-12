@@ -1,20 +1,26 @@
 # comrak-wasm
 
-WebAssembly bindings for [comrak](https://github.com/kivikakk/comrak) — a fast CommonMark + GFM compatible Markdown parser and renderer.
+WebAssembly bindings for [comrak](https://github.com/kivikakk/comrak), a fast
+CommonMark and GitHub Flavored Markdown parser and renderer.
 
-Single ~950KB WASM binary. Runs in browsers, Node.js, Deno, Bun, and edge runtimes.
+The package runs in browsers, Node.js, Deno, Bun, and edge runtimes. It includes
+HTML, CommonMark, XML, plain-text, and ANSI output, plus adapters for syntax
+highlighting, headings, code fences, and URL rewriting.
 
 ## Install
 
-This package is not published to npm. Install it directly from GitHub — the built WASM is committed, so no build step is required on install:
+The package is not published to npm. Install it from GitHub; the built Wasm
+artifact is committed, so consumers do not need a Rust toolchain.
 
 ```bash
-npm install github:jveres/comrak-wasm
+pnpm add github:jveres/comrak-wasm
 ```
 
-Or clone the repo and build it yourself (see [Development](#development)).
+To work on the repository itself, see [Development](#development).
 
-## Usage
+## Initialize
+
+Initialize the Wasm module once before calling any renderer.
 
 ### Browser
 
@@ -25,11 +31,13 @@ await init();
 
 const html = mdToHtml("# Hello **world**", {
   extension: { strikethrough: true, table: true, tasklist: true },
-  render: { unsafe: true },
 });
 ```
 
 ### Node.js
+
+Use the exported Wasm asset subpath rather than importing generated files from
+`pkg`.
 
 ```typescript
 import { readFileSync } from "node:fs";
@@ -37,60 +45,81 @@ import { createRequire } from "node:module";
 import { initSync, mdToHtml } from "comrak-wasm";
 
 const require = createRequire(import.meta.url);
-const wasm = readFileSync(
-  require.resolve("comrak-wasm/pkg/comrak.wasm"),
-);
+const wasm = readFileSync(require.resolve("comrak-wasm/comrak.wasm"));
 initSync({ module: wasm });
 
-const html = mdToHtml("# Hello", {});
+const html = mdToHtml("# Hello");
 ```
 
-## Output Formats
+## Render Markdown
 
-| Function         | Output     | Description                    |
-| ---------------- | ---------- | ------------------------------ |
-| `mdToHtml`       | HTML       | Standard HTML rendering        |
-| `mdToCommonmark` | Markdown   | Normalized CommonMark          |
-| `mdToXml`        | XML        | CommonMark XML AST             |
-| `mdToText`       | Plain text | Structural text, no formatting |
-| `mdToAnsi`       | ANSI       | Terminal-colored output        |
+Every renderer accepts Markdown and an optional `ComrakOptions` object.
 
-All functions accept markdown and an optional `ComrakOptions` object.
+| Function | Output | Purpose |
+| --- | --- | --- |
+| `mdToHtml` | HTML | Standard HTML rendering |
+| `mdToCommonmark` | Markdown | Normalized CommonMark |
+| `mdToXml` | XML | CommonMark XML AST |
+| `mdToText` | Plain text | Structural text without styling |
+| `mdToAnsi` | ANSI | Styled terminal output |
 
-## Options
+Malformed runtime options throw an `Error`. Valid fields no longer disappear
+silently when another field has the wrong type or value.
 
 ```typescript
-mdToHtml(md, {
+const html = mdToHtml(markdown, {
   extension: {
+    alerts: true,
+    autolink: true,
+    blockDirective: true,
+    footnotes: true,
+    headerIdPrefix: "",
+    mathDollars: true,
+    mathLatex: true,
     strikethrough: true,
     table: true,
     tasklist: true,
-    autolink: true,
-    alerts: true,
-    footnotes: true,
-    mathDollars: true,
-    headerIdPrefix: "",
-    superscript: true,
-    underline: true,
-    spoiler: true,
-    // ... all 28 comrak extension options
   },
   parse: {
     smart: true,
-    // ... all 8 parse options
+    sourceposChars: true,
   },
   render: {
-    unsafe: true,
+    alertStyle: "semantic",
     hardbreaks: true,
     sourcepos: true,
-    // ... all 17 render options
   },
 });
 ```
 
-## Plugins
+The TypeScript declarations expose the full supported extension, parse, and
+render option surface.
 
-### Syntax Highlighting
+### Attribute options
+
+The bridge supports `headerAttributes`, `fencedCodeAttributes`,
+`inlineCodeAttributes`, and `linkAttributes`. Comrak's stock formatters consume
+the attribute syntax but do not render or expose the parsed attributes. Use
+these flags only when that lossy behavior is acceptable.
+
+## Use Plugins
+
+Plugin adapters are reusable. The public wrapper clones their callback handles
+for each Wasm call, so one adapter can render multiple documents.
+
+Plugin callback strings are trusted output. The `render.unsafe` option controls
+raw HTML in Markdown; it does not sanitize plugin output. Escape untrusted
+values before returning them. If a callback throws or returns a non-string, the
+bridge falls back to safe escaped rendering.
+
+Phoenix HEEx is template syntax rather than ordinary raw HTML. Comrak passes
+HEEx nodes through even when raw HTML is omitted or escaped. Enable
+`phoenixHeex` only for trusted templates.
+
+### Syntax highlighting
+
+This example extracts Shiki's inner code HTML and safely escapes code when
+Shiki cannot highlight a language.
 
 ```typescript
 import { SyntaxHighlighter, mdToHtmlWithPlugins } from "comrak-wasm";
@@ -101,11 +130,23 @@ const shiki = await createHighlighter({
   langs: ["typescript"],
 });
 
-const html = mdToHtmlWithPlugins(
-  markdown,
-  options,
-  new SyntaxHighlighter(
-    (code, lang) => {
+const escapeHtml = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#x27;",
+      })[char] ?? char,
+  );
+
+const highlighter = new SyntaxHighlighter(
+  (code, lang) => {
+    if (!lang) return escapeHtml(code);
+    try {
       const highlighted = shiki.codeToHtml(code, {
         lang,
         theme: "github-dark",
@@ -113,46 +154,53 @@ const html = mdToHtmlWithPlugins(
       return (
         highlighted.match(
           /<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/,
-        )?.[1] ?? code
+        )?.[1] ?? escapeHtml(code)
       );
-    },
-    () => '<pre class="shiki" style="background:#24292e;padding:1em">',
-    (attrs) => `<code${attrs.class ? ` class="${attrs.class}"` : ""}>`,
-  ),
+    } catch {
+      return escapeHtml(code);
+    }
+  },
+  () => '<pre class="shiki">',
+  (attrs) => {
+    const className = attrs.class ? escapeHtml(attrs.class) : "";
+    return className ? `<code class="${className}">` : "<code>";
+  },
 );
+
+const first = mdToHtmlWithPlugins(markdown, options, highlighter);
+const second = mdToHtmlWithPlugins(otherMarkdown, options, highlighter);
 ```
 
-### Heading Adapter
+The playground uses Shiki's fine-grained core, language, and theme imports to
+avoid bundling the complete catalog.
+
+### Heading adapter
 
 ```typescript
 import { HeadingAdapter, mdToHtmlWithPlugins } from "comrak-wasm";
 
-const html = mdToHtmlWithPlugins(
-  markdown,
-  options,
-  null,
-  new HeadingAdapter(
-    (heading) => `<h${heading.level} id="custom-${heading.content}">`,
-    (heading) => `</h${heading.level}>`,
-  ),
+const headings = new HeadingAdapter(
+  (heading) => `<h${heading.level} class="custom-heading">`,
+  (heading) => `</h${heading.level}>`,
 );
+
+const html = mdToHtmlWithPlugins(markdown, options, null, headings);
 ```
 
-### Codefence Renderers
+### Code-fence renderers
 
-Per-language custom rendering for specific codefence blocks (e.g., mermaid, katex):
+Register trusted renderers for individual code-fence languages.
 
 ```typescript
 import { mdToHtmlWithCodefenceRenderers } from "comrak-wasm";
 
 const html = mdToHtmlWithCodefenceRenderers(markdown, options, {
-  mermaid: (lang, meta, code) => `<div class="mermaid">${code}</div>`,
-  katex: (lang, meta, code) =>
-    `<div class="katex">${katex.renderToString(code)}</div>`,
+  mermaid: (_lang, _meta, code) =>
+    `<div class="mermaid">${escapeHtml(code)}</div>`,
 });
 ```
 
-### URL Rewriters
+### URL rewriters
 
 ```typescript
 import { mdToHtmlWithRewriters } from "comrak-wasm";
@@ -160,14 +208,14 @@ import { mdToHtmlWithRewriters } from "comrak-wasm";
 const html = mdToHtmlWithRewriters(
   markdown,
   options,
-  (url) => `https://proxy.example.com?url=${url}`, // image URL rewriter
-  (url) => `https://redirect.example.com?url=${url}`, // link URL rewriter
+  (url) => `https://images.example/proxy?url=${encodeURIComponent(url)}`,
+  (url) => `https://links.example/redirect?url=${encodeURIComponent(url)}`,
 );
 ```
 
-## Text & ANSI Output
+## Render Text and ANSI
 
-### Plain Text
+Plain-text output preserves useful document structure without styling.
 
 ````typescript
 import { mdToText } from "comrak-wasm";
@@ -175,52 +223,42 @@ import { mdToText } from "comrak-wasm";
 const text = mdToText(
   markdown,
   options,
-  true, // showUrls — append link URLs as (url)
-  false, // showMarkdown — show #, ```, -, **, * etc. (default: false)
-  "░", // tableShadow — shadow character (default: ░)
+  true,  // Append link URLs.
+  false, // Hide Markdown markers.
+  "░",   // Table shadow character; pass "" to disable it.
 );
 ````
 
-### ANSI Terminal
+ANSI output supports preset and partial custom themes.
 
 ```typescript
-import { mdToAnsi, ansiThemeDark, ansiThemeLight } from "comrak-wasm";
+import {
+  ansiThemeAuto,
+  ansiThemeDark,
+  ansiThemeLight,
+  mdToAnsi,
+} from "comrak-wasm";
 
-// Default theme (showMarkdown off, showUrls on, table shadow on)
-const ansi = mdToAnsi(markdown, options);
-
-// Custom theme
 const ansi = mdToAnsi(markdown, options, {
-  heading: "\x1b[1;34m",
-  headingH1: "\x1b[1;4;35m",
-  bold: "\x1b[1m",
-  code: "\x1b[33m",
-  codeBlock: "\x1b[32m",
-  link: "\x1b[4;34m",
+  ...ansiThemeDark(),
   showMarkdown: true,
   showUrls: true,
-  tableShadow: "░",
+  hyperlinks: true,
 });
 
-// Preset themes (light uses a distinct inline-code palette for light backgrounds)
 const dark = ansiThemeDark();
 const light = ansiThemeLight();
+const detected = ansiThemeAuto(process.env.COLORFGBG);
 ```
 
-Features:
+Text and ANSI rendering include box-drawing tables, alerts, blockquote borders,
+lists, footnotes, configurable table shadows, and optional Markdown markers.
+Terminal-width calculation handles wide Unicode characters, combining marks,
+CSI styling, and OSC hyperlinks.
 
-- Box-drawing tables with column alignment and inline formatting
-- Table drop shadow (configurable character)
-- Colored alert badges (Note, Tip, Warning, Caution, Important)
-- Blockquote `│` borders with italic text
-- List bullets always visible (ordered numbers + unordered dashes)
-- Footnote definitions rendered at bottom
-- `showMarkdown` toggle for structural markers (`#`, ` ``` `, `**`, `*`, `` ` ``)
-- Configurable theme (all ANSI codes customizable)
+## Extract Frontmatter
 
-## Frontmatter Extraction
-
-Extract raw frontmatter content (YAML, TOML, etc.) for parsing on the JS side:
+`getFrontmatter` returns raw frontmatter for a parser on the JavaScript side.
 
 ```typescript
 import { getFrontmatter } from "comrak-wasm";
@@ -228,88 +266,91 @@ import { getFrontmatter } from "comrak-wasm";
 const raw = getFrontmatter(markdown, {
   extension: { frontMatterDelimiter: "---" },
 });
-// "title: Hello\ndate: 2026-01-01"
-
-// Parse with your preferred library
-const data = yaml.parse(raw);
 ```
 
-Returns `undefined` if no frontmatter is present.
+It returns `undefined` when the document has no non-empty frontmatter.
 
-## Markdown Healing
+## Heal Streaming Markdown
 
-Fix incomplete markdown from LLM streaming — closes unclosed delimiters:
+`healMarkdown` closes common incomplete constructs produced during streamed
+generation. Its output is idempotent: healing an already healed string does not
+change it again.
 
 ````typescript
 import { healMarkdown } from "comrak-wasm";
 
-healMarkdown("**bold"); // → "**bold**"
-healMarkdown("```js\ncode"); // → "```js\ncode\n```"
-healMarkdown("~~strike"); // → "~~strike~~"
-healMarkdown("[click](http://x"); // → "[click](http://x)"
-healMarkdown("$$\nx^2"); // → "$$\nx^2\n$$"
+healMarkdown("**bold"); // "**bold**"
+healMarkdown("```js\ncode"); // "```js\ncode\n```"
+healMarkdown("[click](https://example.test");
 
-// Use with any renderer
 const html = mdToHtml(healMarkdown(streamChunk), options);
 ````
 
-Handles: code fences, bold, italic, strikethrough, inline code, links/images, KaTeX math, setext headings, incomplete HTML tags.
+The healer covers code fences, inline code, bold, italic, strikethrough, links,
+images, block math, setext headings, and incomplete HTML tags.
 
-## CLI
+## Use the CLI
 
-A small CLI example lives in [`examples/md.mjs`](examples/md.mjs). After cloning and building (`npm run build`), render markdown in the terminal:
+The repository includes a small Node.js example.
 
 ````bash
-# ANSI colored output (default)
-node examples/md.mjs README.md
-
-# Plain text output
-node examples/md.mjs --text README.md
-
-# Show markdown markers (#, ```, **, etc.)
-node examples/md.mjs --markdown README.md
-
-# Disable table shadow
-node examples/md.mjs --no-shadow README.md
-
-# Read from stdin
-echo "# Hello **world**" | node examples/md.mjs -
-
-# Combine options
-node examples/md.mjs -t -m --no-shadow README.md
+pnpm run md -- README.md
+pnpm run md -- --text README.md
+pnpm run md -- --markdown README.md
+pnpm run md -- --no-shadow README.md
+echo "# Hello **world**" | pnpm run md -- -
 ````
 
-Or via the npm script: `npm run md -- README.md`.
+## Run the Playground
 
-## Playground
+Start the local playground with:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-Opens a live playground with all output formats, Shiki syntax highlighting, KaTeX math rendering, and dark/light theme support.
+Vite prints the local URL. The command does not launch a browser. The playground
+supports every output format, explicit Shiki languages and themes, KaTeX, and
+light and dark modes. Its standalone
+[`sample.md`](examples/playground/sample.md) fixture exercises every compatible
+extension and parser feature. Toolbar modes cover the mutually exclusive
+wikilink orders and raw HTML omit, escape, and trusted behavior.
 
 ## Development
 
+Install dependencies and build the committed Wasm package before testing Rust
+changes.
+
 ```bash
-# Build WASM
-npm run build
-
-# Run tests (vitest)
-npm test
-
-# Lint & format (biome)
-npm run check
-
-# Type check
-npm run typecheck
+pnpm install
+pnpm run build
+pnpm run verify
 ```
+
+Useful focused commands include:
+
+```bash
+pnpm test
+pnpm run test:coverage
+pnpm run typecheck
+pnpm run check
+pnpm run build:playground
+pnpm run bench
+```
+
+The repository tracks both `pnpm-lock.yaml` and `Cargo.lock`. The pnpm workspace
+also includes the Shiki example, so one root install prepares all packages.
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs/) with `wasm32-unknown-unknown` target
-- [wasm-bindgen-cli](https://rustwasm.github.io/wasm-bindgen/) — its version must match the `wasm-bindgen` crate version
-- Node.js 22+
+- Rust with the `wasm32-unknown-unknown` target
+- `wasm-bindgen-cli` matching the resolved Rust crate
+- Node.js 22 or newer
+- pnpm 11
+
+See the
+[performance and architecture audit](docs/audit-2026-07-12.md) for measurements,
+completed fixes, and remaining opportunities.
 
 ## License
 

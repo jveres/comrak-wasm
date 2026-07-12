@@ -1,10 +1,9 @@
 # Dependencies
 node_modules/
-pnpm-lock.yaml
+.pnpm-store/
 
 # Rust build output
 target/
-Cargo.lock
 
 # Vite / build output
 dist/

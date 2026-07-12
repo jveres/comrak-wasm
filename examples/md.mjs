@@ -8,8 +8,8 @@ import {
 	initSync,
 	mdToAnsi,
 	mdToText,
-} from "../pkg/comrak.js";
-import { gfmExtensions } from "./shared/options.js";
+} from "comrak-wasm";
+import { comrakExtensions } from "./shared/options.js";
 
 const require = createRequire(import.meta.url);
 const wasmPath = require.resolve("../pkg/comrak.wasm");
@@ -74,12 +74,13 @@ try {
 	}
 } catch (err) {
 	const src = filePath && filePath !== "-" ? filePath : "stdin";
-	console.error(`error: cannot read ${src}: ${err.message}`);
+	const message = err instanceof Error ? err.message : String(err);
+	console.error(`error: cannot read ${src}: ${message}`);
 	process.exit(1);
 }
 
 const opts = {
-	extension: gfmExtensions,
+	extension: comrakExtensions,
 };
 
 const shadow = noShadow ? undefined : "░";
@@ -88,7 +89,8 @@ if (format === "text") {
 	console.log(mdToText(md, opts, true, showMarkdown, shadow));
 } else {
 	const base = theme === "light" ? ansiThemeLight() : ansiThemeDark();
-	console.log(
-		mdToAnsi(md, opts, { ...base, showMarkdown, tableShadow: shadow }),
-	);
+	base.showMarkdown = showMarkdown;
+	if (shadow === undefined) delete base.tableShadow;
+	else base.tableShadow = shadow;
+	console.log(mdToAnsi(md, opts, base));
 }

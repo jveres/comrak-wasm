@@ -1,0 +1,5 @@
+packages:
+  - examples/shiki
+
+minimumReleaseAgeExclude:
+  - vite@8.1.2

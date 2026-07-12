@@ -1,4 +1,4 @@
-use crate::walker::{AstNode, Formatter, walk_and_format};
+use crate::walker::{walk_and_format, AstNode, Formatter};
 
 pub struct TextFormatter {
     pub show_urls: bool,
@@ -12,13 +12,21 @@ pub fn format_text<'a>(
     show_markdown: bool,
     table_shadow: Option<String>,
 ) -> String {
-    let fmt = TextFormatter { show_urls, show_markdown, table_shadow };
+    let fmt = TextFormatter {
+        show_urls,
+        show_markdown,
+        table_shadow,
+    };
     walk_and_format(root, &fmt)
 }
 
 impl Formatter for TextFormatter {
-    fn show_urls(&self) -> bool { self.show_urls }
-    fn show_markdown(&self) -> bool { self.show_markdown }
+    fn show_urls(&self) -> bool {
+        self.show_urls
+    }
+    fn show_markdown(&self) -> bool {
+        self.show_markdown
+    }
 
     fn strong_start(&self, _out: &mut String) {}
     fn strong_end(&self, _out: &mut String) {}

@@ -1,4 +1,4 @@
-use crate::walker::{AstNode, Formatter, walk_and_format};
+use crate::walker::{walk_and_format, AstNode, Formatter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -140,7 +140,9 @@ impl AnsiTheme {
 }
 
 impl Default for AnsiTheme {
-    fn default() -> Self { Self::dark() }
+    fn default() -> Self {
+        Self::dark()
+    }
 }
 
 struct AnsiFormatter {
@@ -157,8 +159,12 @@ pub fn format_ansi<'a>(root: &'a AstNode<'a>, theme: Option<AnsiTheme>) -> Strin
 }
 
 impl Formatter for AnsiFormatter {
-    fn show_urls(&self) -> bool { self.theme.show_urls.unwrap_or(true) }
-    fn show_markdown(&self) -> bool { self.theme.show_markdown.unwrap_or(false) }
+    fn show_urls(&self) -> bool {
+        self.theme.show_urls.unwrap_or(true)
+    }
+    fn show_markdown(&self) -> bool {
+        self.theme.show_markdown.unwrap_or(false)
+    }
 
     fn style(&self, out: &mut String, name: &str) {
         out.push_str(self.theme.g(name));
@@ -175,19 +181,19 @@ impl Formatter for AnsiFormatter {
             return;
         }
         match name {
-            "bold"             => out.push_str("\x1b[22m"),       // bold/dim off
-            "italic"           => out.push_str("\x1b[23m"),       // italic off
-            "strikethrough"    => out.push_str("\x1b[29m"),       // strikethrough off
-            "underline"        => out.push_str("\x1b[24m"),       // underline off
-            "code"             => out.push_str("\x1b[39m\x1b[49m"), // default fg + bg
-            "link"             => out.push_str("\x1b[24m\x1b[39m"), // underline off + default fg
-            "link_url"         => out.push_str("\x1b[22m\x1b[39m"), // dim off + default fg
-            "blockquote"       => out.push_str("\x1b[23m\x1b[22m"), // italic off + dim off
-            "blockquote_border"=> out.push_str("\x1b[39m"),       // default fg
-            "code_block"       => out.push_str("\x1b[39m"),       // default fg
+            "bold" => out.push_str("\x1b[22m"),               // bold/dim off
+            "italic" => out.push_str("\x1b[23m"),             // italic off
+            "strikethrough" => out.push_str("\x1b[29m"),      // strikethrough off
+            "underline" => out.push_str("\x1b[24m"),          // underline off
+            "code" => out.push_str("\x1b[39m\x1b[49m"),       // default fg + bg
+            "link" => out.push_str("\x1b[24m\x1b[39m"),       // underline off + default fg
+            "link_url" => out.push_str("\x1b[22m\x1b[39m"),   // dim off + default fg
+            "blockquote" => out.push_str("\x1b[23m\x1b[22m"), // italic off + dim off
+            "blockquote_border" => out.push_str("\x1b[39m"),  // default fg
+            "code_block" => out.push_str("\x1b[39m"),         // default fg
             "thematic_break" | "code_block_border" => out.push_str("\x1b[22m"), // dim off
-            "list_bullet"      => out.push_str("\x1b[39m"),       // default fg
-            "math"             => out.push_str("\x1b[39m"),       // default fg
+            "list_bullet" => out.push_str("\x1b[39m"),        // default fg
+            "math" => out.push_str("\x1b[39m"),               // default fg
             _ => self.reset(out),
         }
     }
@@ -225,7 +231,10 @@ impl Formatter for AnsiFormatter {
 
     // OSC 8 hyperlinks — clickable links in supported terminals
     fn link_start(&self, out: &mut String, url: &str) {
-        if self.theme.hyperlinks.unwrap_or(false) && !url.is_empty() && !self.theme.g("reset").is_empty() {
+        if self.theme.hyperlinks.unwrap_or(false)
+            && !url.is_empty()
+            && !self.theme.g("reset").is_empty()
+        {
             out.push_str("\x1b]8;;");
             out.push_str(url);
             out.push_str("\x1b\\");
@@ -268,7 +277,10 @@ impl Formatter for AnsiFormatter {
             comrak::nodes::AlertType::Warning => "\x1b[1;97;43m",
             comrak::nodes::AlertType::Caution => "\x1b[1;97;41m",
         };
-        let title = alert.title.as_deref().unwrap_or(alert.alert_type.default_title());
+        let title = alert
+            .title
+            .as_deref()
+            .unwrap_or(alert.alert_type.default_title());
         out.push_str(bg);
         out.push(' ');
         out.push_str(title);

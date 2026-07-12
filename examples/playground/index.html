@@ -233,71 +233,88 @@
         margin: 1em 0;
         color: var(--quote-fg);
       }
-      #output.preview .markdown-alert {
+      #output.preview .markdown-alert,
+      #output.preview .admonition {
         padding: 0.5em 1em;
         border-radius: 4px;
         margin: 1em 0;
       }
-      #output.preview .markdown-alert-title {
+      #output.preview .markdown-alert-title,
+      #output.preview .admonition-title {
         font-weight: 600;
       }
-      #output.preview .markdown-alert-note {
+      #output.preview .markdown-alert-note,
+      #output.preview .admonition.note {
         border-left: 4px solid #4493f8;
         background: #121d2f;
       }
-      #output.preview .markdown-alert-tip {
+      #output.preview .markdown-alert-tip,
+      #output.preview .admonition.tip {
         border-left: 4px solid #3fb950;
         background: #12261e;
       }
-      #output.preview .markdown-alert-important {
+      #output.preview .markdown-alert-important,
+      #output.preview .admonition.important {
         border-left: 4px solid #ab7df8;
         background: #1b1533;
       }
-      #output.preview .markdown-alert-warning {
+      #output.preview .markdown-alert-warning,
+      #output.preview .admonition.warning {
         border-left: 4px solid #d29922;
         background: #272115;
       }
-      #output.preview .markdown-alert-caution {
+      #output.preview .markdown-alert-caution,
+      #output.preview .admonition.caution {
         border-left: 4px solid #f85149;
         background: #2d1215;
       }
-      :root #output.preview .markdown-alert-note {
+      :root #output.preview .markdown-alert-note,
+      :root #output.preview .admonition.note {
         border-left-color: #0969da;
         background: #ddf4ff;
       }
-      :root #output.preview .markdown-alert-tip {
+      :root #output.preview .markdown-alert-tip,
+      :root #output.preview .admonition.tip {
         border-left-color: #1a7f37;
         background: #dafbe1;
       }
-      :root #output.preview .markdown-alert-important {
+      :root #output.preview .markdown-alert-important,
+      :root #output.preview .admonition.important {
         border-left-color: #8250df;
         background: #fbefff;
       }
-      :root #output.preview .markdown-alert-warning {
+      :root #output.preview .markdown-alert-warning,
+      :root #output.preview .admonition.warning {
         border-left-color: #9a6700;
         background: #fff8c5;
       }
-      :root #output.preview .markdown-alert-caution {
+      :root #output.preview .markdown-alert-caution,
+      :root #output.preview .admonition.caution {
         border-left-color: #cf222e;
         background: #ffebe9;
       }
-      [data-theme="dark"] #output.preview .markdown-alert-note {
+      [data-theme="dark"] #output.preview .markdown-alert-note,
+      [data-theme="dark"] #output.preview .admonition.note {
         border-left-color: #4493f8;
         background: #121d2f;
       }
-      [data-theme="dark"] #output.preview .markdown-alert-tip {
+      [data-theme="dark"] #output.preview .markdown-alert-tip,
+      [data-theme="dark"] #output.preview .admonition.tip {
         border-left-color: #3fb950;
         background: #12261e;
       }
-      [data-theme="dark"] #output.preview .markdown-alert-important {
+      [data-theme="dark"] #output.preview .markdown-alert-important,
+      [data-theme="dark"] #output.preview .admonition.important {
         border-left-color: #ab7df8;
         background: #1b1533;
       }
-      [data-theme="dark"] #output.preview .markdown-alert-warning {
+      [data-theme="dark"] #output.preview .markdown-alert-warning,
+      [data-theme="dark"] #output.preview .admonition.warning {
         border-left-color: #d29922;
         background: #272115;
       }
-      [data-theme="dark"] #output.preview .markdown-alert-caution {
+      [data-theme="dark"] #output.preview .markdown-alert-caution,
+      [data-theme="dark"] #output.preview .admonition.caution {
         border-left-color: #f85149;
         background: #2d1215;
       }
@@ -326,7 +343,6 @@
         background: var(--bg-secondary);
         border-top: 1px solid var(--border);
         display: flex;
-        justify-content: space-between;
       }
     </style>
   </head>
@@ -343,8 +359,18 @@
           <option value="ansi">ANSI</option>
         </select>
         <label><input type="checkbox" id="heal" /> heal</label>
-        <label><input type="checkbox" id="unsafe" checked /> unsafe html</label>
-        <label><input type="checkbox" id="gfm" checked /> GFM</label>
+        <select id="rawHtml" title="Raw HTML rendering mode">
+          <option value="omit">raw HTML: omit</option>
+          <option value="escape">raw HTML: escape</option>
+          <option value="trusted" selected>raw HTML: trusted</option>
+        </select>
+        <label
+          ><input type="checkbox" id="extensions" checked /> extensions</label
+        >
+        <select id="wikilinkMode" title="Wikilink pipe order">
+          <option value="url-first">wiki: URL | title</option>
+          <option value="title-first">wiki: title | URL</option>
+        </select>
         <label><input type="checkbox" id="shiki" checked /> Shiki</label>
         <label><input type="checkbox" id="katex" checked /> KaTeX</label>
         <select id="theme">
@@ -370,177 +396,13 @@
         </div>
       </div>
       <div class="pane">
-        <textarea id="input">
----
-title: "comrak-wasm playground"
-description: WebAssembly bindings for comrak
----
-
-# comrak-wasm playground
-
-Renders markdown using **comrak** 0.51 compiled to WebAssembly — supporting
-*seven output formats* from a single parse.
-
-## Output Formats
-
-| **Format**   | **Target** |       **Use Case** |
-| :----------- | :--------: | -----------------: |
-| HTML         |  Browser   |     Rich rendering |
-| CommonMark   |  Markdown  |    Normalization   |
-| XML          |  Tooling   |     AST inspection |
-| Typst        |  Print     |     Typesetting    |
-| Text         |  Terminal  |   Plain extraction |
-| ANSI         |  Terminal  |     Styled output  |
-
-Tables support *inline formatting*:
-
-| **Feature** | **Syntax** | **Example** |
-|-------------|------------|-------------|
-| Bold | `**text**` | **bold text** |
-| Italic | `*text*` | *italic text* |
-| Code | `` `code` `` | `inline code` |
-| Strike | `~~text~~` | ~~struck~~ |
-| Link | `[t](url)` | [docs](https://docs.rs) |
-
-## Code Examples
-
-```typescript
-import init, { mdToHtml, mdToAnsi } from "comrak-wasm";
-
-await init();
-
-// Render to HTML with GFM extensions
-const html = mdToHtml(markdown, {
-  extension: { table: true, tasklist: true, alerts: true },
-  render: { unsafe: true },
-});
-
-// Render to ANSI with custom theme
-const ansi = mdToAnsi(markdown, opts, { showMarkdown: false });
-```
-
-```rust
-fn main() {
-    let options = Options::default();
-    let html = markdown_to_html("# Hello", &options);
-    println!("{html}");
-}
-```
-
-## Inline Formatting
-
-Regular text with **bold**, *italic*, ~~strikethrough~~, and `inline code`.
-Combine them: ***bold italic***, **bold with `code` inside**.
-Also: H~2~O (subscript), x^2^ (superscript), ==highlighted==,
-++inserted++, ||spoiler text||, and __underlined__.
-
-## Task Lists
-
-- [x] HTML rendering with Shiki syntax highlighting
-- [x] Text and ANSI output with box-drawing tables
-- [x] Configurable ANSI themes (dark/light)
-- [ ] JSON AST output
-- [ ] Streaming renderer
-
-## Nested Lists
-
-1. First item
-   - Sub-item A
-   - Sub-item B
-     - Deep nested
-2. Second item
-   1. Ordered sub-item
-   2. Another one
-
-## Blockquotes
-
-> Markdown is intended to be as easy-to-read and easy-to-write
-> as is feasible.
->
-> — *John Gruber*
-
-## Alerts
-
-> [!NOTE]
-> This playground runs entirely in the browser — no server needed.
-
-> [!TIP]
-> Try switching between output formats using the dropdown above.
-
-> [!WARNING]
-> The `unsafe` option must be enabled to render raw HTML.
-
-> [!IMPORTANT]
-> All comrak extension options are available via the options object.
-
-> [!CAUTION]
-> Disabling `showMarkdown` strips all structural markers from the output.
-
-## Math
-
-Inline math: $E = mc^2$ and display math:
-
-$$
-\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
-$$
-
-Chemistry with mhchem: $\ce{H2O}$, $\ce{CO2}$, and:
-
-$$
-\ce{2H2 + O2 -> 2H2O}
-$$
-
-## Links and Images
-
-Visit the [comrak repository](https://github.com/kivikakk/comrak) or
-check the [API docs](https://docs.rs/comrak).
-Autolinked URL: https://github.com/jveres/comrak-wasm
-
-![Placeholder image](https://placehold.co/600x200/e2e8f0/64748b?text=comrak-wasm+playground)
-
-## Footnotes
-
-CommonMark with footnotes[^1] and multiple references[^2].
-
-[^1]: This is the first footnote.
-[^2]: And the second one with **formatting**.
-
-## Description Lists
-
-comrak
-: A fast CommonMark + GFM Markdown parser written in Rust.
-
-wasm-bindgen
-: A tool for facilitating communication between WASM and JavaScript.
-
-## Wiki Links
-
-Link to [[another page]] or [[target|custom title]].
-
-## Shortcodes
-
-Emoji shortcodes: :rocket: :star: :wave:
-
-## Multiline Block Quotes
-
->>>
-This is a multiline block quote.
-
-It can span multiple paragraphs without `>` on each line.
->>>
-
----
-
-*Built with* `comrak` 0.51 *+* `wasm-bindgen`
-</textarea
-        >
+        <textarea id="input"></textarea>
       </div>
       <div class="pane">
         <div id="output" class="preview"></div>
       </div>
       <div class="statusbar">
         <span id="status">Loading...</span>
-        <span id="version"></span>
       </div>
     </div>
     <script type="module" src="./main.ts"></script>

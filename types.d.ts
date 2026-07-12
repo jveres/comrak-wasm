@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 export interface ExtensionOptions {
 	strikethrough?: boolean;
 	tagfilter?: boolean;
@@ -21,6 +23,8 @@ export interface ExtensionOptions {
 	multilineBlockQuotes?: boolean;
 	alerts?: boolean;
 	mathDollars?: boolean;
+	/** Enables inline `\\(...\\)` and display `\\[...\\]` math. */
+	mathLatex?: boolean;
 	mathCode?: boolean;
 	shortcodes?: boolean;
 	wikilinksTitleAfterPipe?: boolean;
@@ -33,7 +37,33 @@ export interface ExtensionOptions {
 	subtext?: boolean;
 	highlight?: boolean;
 	insert?: boolean;
+	/**
+	 * Enables trusted Phoenix HEEx template syntax. HEEx output bypasses raw HTML
+	 * omit, escape, and tag-filter settings.
+	 */
 	phoenixHeex?: boolean;
+	/** Enables `:::` container block directives. */
+	blockDirective?: boolean;
+	/**
+	 * Parses attributes attached to ATX and setext headings. Stock formatters
+	 * consume the syntax but do not expose or render the parsed attributes.
+	 */
+	headerAttributes?: boolean;
+	/**
+	 * Parses attributes in fenced code block info strings. Stock formatters
+	 * consume the syntax but do not expose or render the parsed attributes.
+	 */
+	fencedCodeAttributes?: boolean;
+	/**
+	 * Parses attributes following inline code spans. Stock formatters consume
+	 * the syntax but do not expose or render the parsed attributes.
+	 */
+	inlineCodeAttributes?: boolean;
+	/**
+	 * Parses attributes following links and images. Stock formatters consume the
+	 * syntax but do not expose or render the parsed attributes.
+	 */
+	linkAttributes?: boolean;
 }
 
 export interface ParseOptions {
@@ -45,6 +75,8 @@ export interface ParseOptions {
 	ignoreSetext?: boolean;
 	leaveFootnoteDefinitions?: boolean;
 	escapedCharSpans?: boolean;
+	/** Counts source-position columns as Unicode characters instead of UTF-8 bytes. */
+	sourceposChars?: boolean;
 }
 
 export interface RenderOptions {
@@ -62,6 +94,8 @@ export interface RenderOptions {
 	preferFenced?: boolean;
 	figureWithCaption?: boolean;
 	tasklistClasses?: boolean;
+	/** Selects comrak's class-based or semantic HTML alert markup. */
+	alertStyle?: "specific" | "semantic";
 	olWidth?: number;
 	experimentalMinimizeCommonmark?: boolean;
 	compactHtml?: boolean;
@@ -80,20 +114,37 @@ export function mdToCommonmark(
 	options?: ComrakOptions | null,
 ): string;
 
+export type SyntaxHighlightCallback = (
+	code: string,
+	lang: string | undefined,
+) => string;
+
+export type AttributeRendererCallback = (
+	attributes: Record<string, string>,
+) => string;
+
+export interface HeadingMeta {
+	level: number;
+	content: string;
+}
+
+export type HeadingAdapterCallback = (heading: HeadingMeta) => string;
+
 export class SyntaxHighlighter {
 	constructor(
-		highlight: (code: string, lang: string | undefined) => string,
-		pre: (attrs: Record<string, string>) => string,
-		code: (attrs: Record<string, string>) => string,
+		highlight: SyntaxHighlightCallback,
+		pre: AttributeRendererCallback,
+		code: AttributeRendererCallback,
 	);
+	/** Creates a new adapter backed by the same callbacks. */
+	clone(): SyntaxHighlighter;
 	free(): void;
 }
 
 export class HeadingAdapter {
-	constructor(
-		enter: (heading: { level: number; content: string }) => string,
-		exit: (heading: { level: number; content: string }) => string,
-	);
+	constructor(enter: HeadingAdapterCallback, exit: HeadingAdapterCallback);
+	/** Creates a new adapter backed by the same callbacks. */
+	clone(): HeadingAdapter;
 	free(): void;
 }
 
@@ -106,12 +157,23 @@ export function mdToHtmlWithPlugins(
 
 export function mdToXml(md: string, options?: ComrakOptions | null): string;
 
+/**
+ * @deprecated Comrak's XML formatter ignores render plugins. Use mdToXml.
+ */
 export function mdToXmlWithPlugins(
 	md: string,
 	options?: ComrakOptions | null,
 	syntaxHighlighter?: SyntaxHighlighter | null,
 	headingAdapter?: HeadingAdapter | null,
 ): string;
+
+export type CodefenceRendererCallback = (
+	lang: string,
+	meta: string,
+	code: string,
+) => string;
+
+export type CodefenceRenderers = Record<string, CodefenceRendererCallback>;
 
 /**
  * Low-level renderer wrapper exported by the WASM module. Most callers don't
@@ -120,26 +182,25 @@ export function mdToXmlWithPlugins(
  * of {@link mdToHtmlWithCodefenceRenderers}.
  */
 export class CodefenceRenderer {
-	constructor(write: (lang: string, meta: string, code: string) => string);
+	constructor(write: CodefenceRendererCallback);
 	free(): void;
 }
 
 export function mdToHtmlWithCodefenceRenderers(
 	md: string,
 	options?: ComrakOptions | null,
-	renderers?: Record<
-		string,
-		(lang: string, meta: string, code: string) => string
-	> | null,
+	renderers?: CodefenceRenderers | null,
 	syntaxHighlighter?: SyntaxHighlighter | null,
 	headingAdapter?: HeadingAdapter | null,
 ): string;
 
+export type UrlRewriter = (url: string) => string;
+
 export function mdToHtmlWithRewriters(
 	md: string,
 	options?: ComrakOptions | null,
-	imageUrlRewriter?: ((url: string) => string) | null,
-	linkUrlRewriter?: ((url: string) => string) | null,
+	imageUrlRewriter?: UrlRewriter | null,
+	linkUrlRewriter?: UrlRewriter | null,
 ): string;
 
 export function mdToText(
@@ -196,7 +257,9 @@ export function getFrontmatter(
 
 export function healMarkdown(md: string): string;
 
-export function detectColorScheme(colorfgbg?: string): string;
+export type ColorScheme = "light" | "dark";
+
+export function detectColorScheme(colorfgbg?: string): ColorScheme;
 export function ansiThemeAuto(colorfgbg?: string): AnsiTheme;
 
 export type InitInput =

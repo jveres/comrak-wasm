@@ -1,10 +1,22 @@
 import katex from "katex";
 import "katex/contrib/mhchem";
-import { createHighlighter, type Highlighter } from "shiki";
+import bash from "@shikijs/langs/bash";
+import css from "@shikijs/langs/css";
+import goLang from "@shikijs/langs/go";
+import html from "@shikijs/langs/html";
+import javascript from "@shikijs/langs/javascript";
+import json from "@shikijs/langs/json";
+import markdown from "@shikijs/langs/markdown";
+import python from "@shikijs/langs/python";
+import rust from "@shikijs/langs/rust";
+import toml from "@shikijs/langs/toml";
+import typescript from "@shikijs/langs/typescript";
+import yaml from "@shikijs/langs/yaml";
+import githubDark from "@shikijs/themes/github-dark";
+import githubLight from "@shikijs/themes/github-light";
 import init, {
 	ansiThemeDark,
 	ansiThemeLight,
-	comrakVersion,
 	healMarkdown,
 	mdToAnsi,
 	mdToCommonmark,
@@ -13,18 +25,29 @@ import init, {
 	mdToText,
 	mdToXml,
 	SyntaxHighlighter,
-} from "../../pkg/comrak.js";
+} from "comrak-wasm";
+import { createHighlighterCore } from "shiki/core";
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import type { ComrakOptions } from "../../types";
-import { gfmExtensions } from "../shared/options.js";
-import { createShikiAdapter } from "../shared/shiki-adapter";
+import { createPlaygroundOptions } from "../shared/options.js";
+import {
+	createShikiAdapter,
+	type ShikiHighlighter,
+} from "../shared/shiki-adapter";
+import sampleMarkdown from "./sample.md?raw";
 
 const input = document.getElementById("input") as HTMLTextAreaElement;
 const output = document.getElementById("output") as HTMLDivElement;
 const outputLabel = document.getElementById("output-label") as HTMLDivElement;
 const formatSelect = document.getElementById("format") as HTMLSelectElement;
 const healCheck = document.getElementById("heal") as HTMLInputElement;
-const unsafeCheck = document.getElementById("unsafe") as HTMLInputElement;
-const gfmCheck = document.getElementById("gfm") as HTMLInputElement;
+const rawHtmlSelect = document.getElementById("rawHtml") as HTMLSelectElement;
+const extensionsCheck = document.getElementById(
+	"extensions",
+) as HTMLInputElement;
+const wikilinkModeSelect = document.getElementById(
+	"wikilinkMode",
+) as HTMLSelectElement;
 const shikiCheck = document.getElementById("shiki") as HTMLInputElement;
 const katexCheck = document.getElementById("katex") as HTMLInputElement;
 const themeSelect = document.getElementById("theme") as HTMLSelectElement;
@@ -39,34 +62,35 @@ const formatOptions = document.getElementById(
 	"formatOptions",
 ) as HTMLDivElement;
 const status = document.getElementById("status") as HTMLSpanElement;
-const version = document.getElementById("version") as HTMLSpanElement;
 
-let shiki: Highlighter | null = null;
+input.value = sampleMarkdown;
+
+let shiki: ShikiHighlighter | null = null;
 let ready = false;
 
 try {
 	const [, highlighter] = await Promise.all([
 		init(),
-		createHighlighter({
-			themes: ["github-dark", "github-light"],
+		createHighlighterCore({
+			themes: [githubDark, githubLight],
 			langs: [
-				"typescript",
-				"javascript",
-				"rust",
-				"bash",
-				"json",
-				"html",
-				"css",
-				"python",
-				"go",
-				"yaml",
-				"toml",
-				"markdown",
+				typescript,
+				javascript,
+				rust,
+				bash,
+				json,
+				html,
+				css,
+				python,
+				goLang,
+				yaml,
+				toml,
+				markdown,
 			],
+			engine: createJavaScriptRegexEngine(),
 		}),
 	]);
 	shiki = highlighter;
-	version.textContent = `comrak ${comrakVersion()}`;
 	status.textContent = "Ready";
 	ready = true;
 } catch (err) {
@@ -75,13 +99,11 @@ try {
 }
 
 function getOptions(): ComrakOptions {
-	const opts: ComrakOptions = {
-		render: { unsafe: unsafeCheck.checked },
-	};
-	if (gfmCheck.checked) {
-		opts.extension = gfmExtensions;
-	}
-	return opts;
+	return createPlaygroundOptions(
+		extensionsCheck.checked,
+		rawHtmlSelect.value,
+		wikilinkModeSelect.value,
+	);
 }
 
 function isDark(): boolean {
@@ -180,7 +202,7 @@ function ansiToHtml(text: string): string {
 			"#0ff",
 			"#fff",
 		];
-		if (n < 16) return std[n];
+		if (n < 16) return std[n] ?? "";
 		if (n < 232) {
 			const i = n - 16;
 			const r = Math.floor(i / 36) * 51;
@@ -218,6 +240,11 @@ function ansiToHtml(text: string): string {
 		let j = 0;
 		while (j < codes.length) {
 			const c = codes[j];
+			const extendedColor = codes[j + 2];
+			if (c === undefined) {
+				j++;
+				continue;
+			}
 			if (c === 0) {
 				bold = dim = italic = underline = strike = false;
 				fg = bg = "";
@@ -242,11 +269,19 @@ function ansiToHtml(text: string): string {
 			else if (c >= 40 && c <= 47) {
 				bg = bgMap[c] ?? "";
 				bgPad = true;
-			} else if (c === 38 && codes[j + 1] === 5 && j + 2 < codes.length) {
-				fg = color256(codes[j + 2]);
+			} else if (
+				c === 38 &&
+				codes[j + 1] === 5 &&
+				extendedColor !== undefined
+			) {
+				fg = color256(extendedColor);
 				j += 2;
-			} else if (c === 48 && codes[j + 1] === 5 && j + 2 < codes.length) {
-				bg = color256(codes[j + 2]);
+			} else if (
+				c === 48 &&
+				codes[j + 1] === 5 &&
+				extendedColor !== undefined
+			) {
+				bg = color256(extendedColor);
 				bgPad = false;
 				j += 2;
 			}
@@ -283,7 +318,7 @@ function ansiToHtml(text: string): string {
 		else if (text[i] === ">") out.push("&gt;");
 		else if (text[i] === "&") out.push("&amp;");
 		else if (text[i] === "\n") out.push("<br>");
-		else out.push(text[i]);
+		else out.push(text[i] ?? "");
 		i++;
 	}
 	if (spanOpen) out.push("</span>");
@@ -356,7 +391,8 @@ function render() {
 			const theme = dark ? ansiThemeDark() : ansiThemeLight();
 			theme.showMarkdown = showMarkdownCheck.checked;
 			theme.showUrls = showUrlsCheck.checked;
-			theme.tableShadow = tableShadowCheck.checked ? "░" : undefined;
+			if (tableShadowCheck.checked) theme.tableShadow = "░";
+			else delete theme.tableShadow;
 			result = mdToAnsi(md, opts, theme);
 			output.className = "ansi";
 			if (dark) {
@@ -378,11 +414,18 @@ function render() {
 	status.textContent = `Rendered in ${ms}ms`;
 }
 
-input.addEventListener("input", render);
+let renderTimer: number | undefined;
+function scheduleRender(): void {
+	window.clearTimeout(renderTimer);
+	renderTimer = window.setTimeout(render, 75);
+}
+
+input.addEventListener("input", scheduleRender);
 formatSelect.addEventListener("change", render);
 healCheck.addEventListener("change", render);
-unsafeCheck.addEventListener("change", render);
-gfmCheck.addEventListener("change", render);
+rawHtmlSelect.addEventListener("change", render);
+extensionsCheck.addEventListener("change", render);
+wikilinkModeSelect.addEventListener("change", render);
 shikiCheck.addEventListener("change", render);
 katexCheck.addEventListener("change", render);
 themeSelect.addEventListener("change", render);
