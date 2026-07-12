@@ -1425,6 +1425,10 @@ describe("heal", () => {
 		expect(healMarkdown("use `const")).toBe("use `const`");
 	});
 
+	test("leaves complete triple-backtick inline code unchanged", () => {
+		expect(healMarkdown("```test```")).toBe("```test```");
+	});
+
 	test("closes unclosed code block", () => {
 		const result = healMarkdown("```js\ncode");
 		expect(result).toContain("```js\ncode");

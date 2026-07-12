@@ -93,6 +93,16 @@ fn fence_line_at(s: &str, i: usize, open: Option<Fence>) -> Option<(Fence, usize
         return None;
     }
 
+    if open.is_none() && marker == b'`' {
+        let line_end = bytes[i + length..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(bytes.len(), |offset| i + length + offset);
+        if bytes[i + length..line_end].contains(&b'`') {
+            return None;
+        }
+    }
+
     if let Some(open) = open {
         if marker != open.marker || length < open.length {
             return None;
@@ -890,5 +900,10 @@ mod tests {
     #[test]
     fn midline_backticks_are_healed_as_inline_code() {
         assert_eq!(heal_markdown("text ```code"), "text ```code```");
+    }
+
+    #[test]
+    fn complete_triple_backtick_inline_code_is_not_a_fence() {
+        assert_eq!(heal_markdown("```test```"), "```test```");
     }
 }
