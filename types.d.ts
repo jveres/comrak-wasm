@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+/// <reference lib="esnext.disposable" />
 
 export interface ExtensionOptions {
 	strikethrough?: boolean;
@@ -107,6 +108,40 @@ export interface ComrakOptions {
 	render?: RenderOptions;
 }
 
+/**
+ * Comrak options prepared once for repeated renders. Dispose the handle when a
+ * long-lived application no longer needs it.
+ */
+export class PreparedOptions {
+	constructor(options?: ComrakOptions | null);
+	mdToHtml(md: string): string;
+	mdToHtmlWithPlugins(
+		md: string,
+		syntaxHighlighter?: SyntaxHighlighter | null,
+		headingAdapter?: HeadingAdapter | null,
+	): string;
+	mdToHtmlWithCodefenceRenderers(
+		md: string,
+		renderers: PreparedCodefenceRenderers,
+		syntaxHighlighter?: SyntaxHighlighter | null,
+		headingAdapter?: HeadingAdapter | null,
+	): string;
+	mdToCommonmark(md: string): string;
+	mdToXml(md: string): string;
+	/** `tableShadow` accepts `""` or one non-control Unicode scalar value. */
+	mdToText(
+		md: string,
+		showUrls?: boolean,
+		showMarkdown?: boolean,
+		tableShadow?: string,
+	): string;
+	mdToAnsi(md: string, theme?: AnsiTheme | null): string;
+	mdToAnsiWithTheme(md: string, theme: PreparedAnsiTheme): string;
+	getFrontmatter(md: string): string | undefined;
+	free(): void;
+	[Symbol.dispose](): void;
+}
+
 export function comrakVersion(): string;
 export function mdToHtml(md: string, options?: ComrakOptions | null): string;
 export function mdToCommonmark(
@@ -114,10 +149,7 @@ export function mdToCommonmark(
 	options?: ComrakOptions | null,
 ): string;
 
-export type SyntaxHighlightCallback = (
-	code: string,
-	lang: string | undefined,
-) => string;
+export type SyntaxHighlightCallback = (code: string, lang: string) => string;
 
 export type AttributeRendererCallback = (
 	attributes: Record<string, string>,
@@ -139,6 +171,7 @@ export class SyntaxHighlighter {
 	/** Creates a new adapter backed by the same callbacks. */
 	clone(): SyntaxHighlighter;
 	free(): void;
+	[Symbol.dispose](): void;
 }
 
 export class HeadingAdapter {
@@ -146,6 +179,7 @@ export class HeadingAdapter {
 	/** Creates a new adapter backed by the same callbacks. */
 	clone(): HeadingAdapter;
 	free(): void;
+	[Symbol.dispose](): void;
 }
 
 export function mdToHtmlWithPlugins(
@@ -175,6 +209,13 @@ export type CodefenceRendererCallback = (
 
 export type CodefenceRenderers = Record<string, CodefenceRendererCallback>;
 
+/** Code-fence renderer registrations validated once for repeated renders. */
+export class PreparedCodefenceRenderers {
+	constructor(renderers?: CodefenceRenderers | null);
+	free(): void;
+	[Symbol.dispose](): void;
+}
+
 /**
  * Low-level renderer wrapper exported by the WASM module. Most callers don't
  * construct this directly — pass a plain
@@ -184,6 +225,7 @@ export type CodefenceRenderers = Record<string, CodefenceRendererCallback>;
 export class CodefenceRenderer {
 	constructor(write: CodefenceRendererCallback);
 	free(): void;
+	[Symbol.dispose](): void;
 }
 
 export function mdToHtmlWithCodefenceRenderers(
@@ -208,6 +250,7 @@ export function mdToText(
 	options?: ComrakOptions | null,
 	showUrls?: boolean,
 	showMarkdown?: boolean,
+	/** Accepts `""` or one non-control Unicode scalar value. */
 	tableShadow?: string,
 ): string;
 
@@ -237,6 +280,7 @@ export interface AnsiTheme {
 	// Behavior flags (not colors):
 	showUrls?: boolean;
 	showMarkdown?: boolean;
+	/** Accepts `""` or one non-control Unicode scalar value. */
 	tableShadow?: string;
 	hyperlinks?: boolean;
 }
@@ -245,6 +289,19 @@ export function mdToAnsi(
 	md: string,
 	options?: ComrakOptions | null,
 	theme?: AnsiTheme,
+): string;
+
+/** ANSI theme validated and merged once for repeated renders. */
+export class PreparedAnsiTheme {
+	constructor(theme?: AnsiTheme | null);
+	free(): void;
+	[Symbol.dispose](): void;
+}
+
+export function mdToAnsiWithTheme(
+	md: string,
+	options: ComrakOptions | null | undefined,
+	theme: PreparedAnsiTheme,
 ): string;
 
 export function ansiThemeDark(): AnsiTheme;

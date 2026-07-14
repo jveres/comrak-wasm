@@ -73,7 +73,7 @@ impl AnsiTheme {
         }
     }
 
-    fn merge_with_defaults(self) -> AnsiTheme {
+    pub(crate) fn merge_with_defaults(self) -> AnsiTheme {
         let d = AnsiTheme::dark();
         macro_rules! merge {
             ($field:ident) => {
@@ -145,25 +145,55 @@ impl Default for AnsiTheme {
     }
 }
 
-struct AnsiFormatter {
-    theme: AnsiTheme,
+struct AnsiFormatter<'a> {
+    theme: &'a AnsiTheme,
 }
 
+#[cfg(test)]
 pub fn format_ansi<'a>(root: &'a AstNode<'a>, theme: Option<AnsiTheme>) -> String {
     let theme = match theme {
         Some(t) => t.merge_with_defaults(),
         None => AnsiTheme::default(),
     };
+    format_ansi_prepared(root, &theme)
+}
+
+pub(crate) fn format_ansi_prepared<'a>(root: &'a AstNode<'a>, theme: &AnsiTheme) -> String {
     let fmt = AnsiFormatter { theme };
     walk_and_format(root, &fmt)
 }
 
-impl Formatter for AnsiFormatter {
+fn write_terminal_safe(out: &mut String, literal: &str) {
+    // Unicode control characters outside ASCII are all in U+0080..=U+009F,
+    // whose UTF-8 encoding starts with 0xC2. Most Markdown literals therefore
+    // take this single byte-scan plus push_str fast path.
+    if !literal.as_bytes().iter().any(|byte| {
+        (*byte < b' ' && !matches!(*byte, b'\n' | b'\t')) || *byte == 0x7f || *byte == 0xc2
+    }) {
+        out.push_str(literal);
+        return;
+    }
+
+    let mut copied_through = 0;
+    for (index, character) in literal.char_indices() {
+        if character.is_control() && !matches!(character, '\n' | '\t') {
+            out.push_str(&literal[copied_through..index]);
+            copied_through = index + character.len_utf8();
+        }
+    }
+    out.push_str(&literal[copied_through..]);
+}
+
+impl Formatter for AnsiFormatter<'_> {
     fn show_urls(&self) -> bool {
         self.theme.show_urls.unwrap_or(true)
     }
     fn show_markdown(&self) -> bool {
         self.theme.show_markdown.unwrap_or(false)
+    }
+
+    fn write_literal(&self, out: &mut String, literal: &str) {
+        write_terminal_safe(out, literal);
     }
 
     fn style(&self, out: &mut String, name: &str) {
@@ -236,7 +266,7 @@ impl Formatter for AnsiFormatter {
             && !self.theme.g("reset").is_empty()
         {
             out.push_str("\x1b]8;;");
-            out.push_str(url);
+            self.write_literal(out, url);
             out.push_str("\x1b\\");
         }
         self.style(out, "link");
@@ -250,7 +280,7 @@ impl Formatter for AnsiFormatter {
             out.push(' ');
             self.style(out, "link_url");
             out.push('(');
-            out.push_str(url);
+            self.write_literal(out, url);
             out.push(')');
             self.style_end(out, "link_url");
         }
@@ -283,12 +313,83 @@ impl Formatter for AnsiFormatter {
             .unwrap_or(alert.alert_type.default_title());
         out.push_str(bg);
         out.push(' ');
-        out.push_str(title);
+        self.write_literal(out, title);
         out.push(' ');
         self.reset(out);
     }
 
     fn table_shadow_char(&self) -> Option<&str> {
         self.theme.table_shadow.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_ansi, AnsiTheme};
+    use comrak::{parse_document, Arena, Options};
+
+    fn render(markdown: &str, options: &Options<'_>, theme: Option<AnsiTheme>) -> String {
+        let arena = Arena::new();
+        let root = parse_document(&arena, markdown, options);
+        format_ansi(root, theme)
+    }
+
+    #[test]
+    fn strips_terminal_controls_from_plain_markdown_text() {
+        let output = render(
+            "safe\x1b]52;c;SGVsbG8=\x07tail\u{009b}31m",
+            &Options::default(),
+            None,
+        );
+
+        assert_eq!(output, "safe]52;c;SGVsbG8=tail31m");
+    }
+
+    #[test]
+    fn strips_terminal_controls_from_styled_and_structural_literals() {
+        let mut options = Options::default();
+        options.extension.table = true;
+        let payload = "safe\x1b]52;c;SGVsbG8=\x07tail";
+        let documents = [
+            format!("`{payload}`"),
+            format!("```text\n{payload}\n```"),
+            format!("| value |\n|---|\n| {payload} |"),
+        ];
+
+        for markdown in documents {
+            let output = render(&markdown, &options, None);
+            assert!(output.contains("safe"));
+            assert!(!output.contains("\x1b]52"));
+            assert!(!output.contains('\x07'));
+        }
+    }
+
+    #[test]
+    fn strips_terminal_controls_from_osc_hyperlink_urls() {
+        let mut theme = AnsiTheme::dark();
+        theme.hyperlinks = Some(true);
+        theme.show_urls = Some(false);
+        let arena = Arena::new();
+        let root = parse_document(
+            &arena,
+            "[label](https://example.test/)",
+            &Options::default(),
+        );
+        let link = root
+            .first_child()
+            .and_then(|paragraph| paragraph.first_child())
+            .expect("parsed document contains a link");
+        let mut data = link.data.borrow_mut();
+        let comrak::nodes::NodeValue::Link(link) = &mut data.value else {
+            panic!("parsed inline is not a link");
+        };
+        link.url.push_str("\x1b]52;c;SGVsbG8=\x07tail");
+        drop(data);
+
+        let output = format_ansi(root, Some(theme));
+
+        assert!(output.contains("\x1b]8;;https://example.test/"));
+        assert!(!output.contains("\x1b]52"));
+        assert!(!output.contains('\x07'));
     }
 }

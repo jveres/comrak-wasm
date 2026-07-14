@@ -21,9 +21,11 @@
 		}
 	},
 	"include": [
+		"index.js",
 		"types.d.ts",
-		"comrak.test.ts",
+		"*.test.ts",
 		"vitest.config.ts",
+		"bench/**/*.mjs",
 		"examples/**/*.ts",
 		"examples/**/*.js",
 		"examples/**/*.mjs"

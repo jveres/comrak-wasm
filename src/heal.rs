@@ -76,10 +76,18 @@ fn fence_line_at(s: &str, i: usize, open: Option<Fence>) -> Option<(Fence, usize
         return None;
     }
 
-    let line_start = bytes[..i]
+    // A CommonMark fence may be indented by at most three spaces. Looking
+    // farther back than the preceding newline plus those three bytes cannot
+    // change the result, and would make syntax-heavy single lines quadratic.
+    let prefix_start = i.saturating_sub(4);
+    let line_start = match bytes[prefix_start..i]
         .iter()
         .rposition(|byte| *byte == b'\n')
-        .map_or(0, |position| position + 1);
+    {
+        Some(position) => prefix_start + position + 1,
+        None if i <= 3 => 0,
+        None => return None,
+    };
     let indent = i - line_start;
     if indent > 3 || bytes[line_start..i].iter().any(|byte| *byte != b' ') {
         return None;
@@ -300,32 +308,40 @@ fn heal_block_markup(buf: &mut String) {
 // --- Healers ---
 
 fn heal_html_tag(buf: &mut String) {
-    // Find unclosed HTML tag at end: <tag... with no >
+    // Track the final consecutive run of removable `<tag` starts after the
+    // last `>`. Truncating once removes the whole exposed suffix and reaches
+    // the same fixed point as repeated rescans in linear time.
     let bytes = buf.as_bytes();
-    let mut last_lt = None;
-    for i in (0..bytes.len()).rev() {
-        if bytes[i] == b'>' {
-            return; // Last angle bracket is a close — no unclosed tag
+    let mut open_fence = None;
+    let mut removable_run_start = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        if let Some(run) = update_fence(buf, i, &mut open_fence) {
+            i += run;
+            continue;
         }
-        if bytes[i] == b'<' {
-            last_lt = Some(i);
-            break;
-        }
-    }
-    if let Some(pos) = last_lt {
-        if in_fenced_code_block(buf, pos) {
-            return;
-        }
-        // Check next char is letter or /
-        if pos + 1 < bytes.len() {
-            let next = bytes[pos + 1];
-            if next.is_ascii_alphabetic() || next == b'/' {
-                buf.truncate(pos);
-                // Trim trailing whitespace
-                let trimmed = buf.trim_end().len();
-                buf.truncate(trimmed);
+
+        match bytes[i] {
+            b'>' => removable_run_start = None,
+            b'<' => {
+                let next = bytes.get(i + 1).copied();
+                let removable = open_fence.is_none()
+                    && next.is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'/');
+                if removable {
+                    removable_run_start.get_or_insert(i);
+                } else {
+                    removable_run_start = None;
+                }
             }
+            _ => {}
         }
+        i += 1;
+    }
+
+    if let Some(pos) = removable_run_start {
+        buf.truncate(pos);
+        let trimmed = buf.trim_end().len();
+        buf.truncate(trimmed);
     }
 }
 
@@ -353,7 +369,7 @@ fn heal_links(buf: &mut String) {
     // Find last unclosed [ or ![. Track fence state and backslash-escape parity
     // inline; calling is_escaped per byte would be O(n^2) on backslash-heavy input.
     let bytes = buf.as_bytes();
-    let mut unmatched_opens: Vec<(usize, bool)> = Vec::new(); // (pos, is_image)
+    let mut unmatched_opens = Vec::new();
     let mut open_fence = None;
     let mut backslashes = 0usize; // consecutive '\' immediately before byte i
 
@@ -378,8 +394,8 @@ fn heal_links(buf: &mut String) {
             continue;
         }
         if bytes[i] == b'[' {
-            let is_image = i > 0 && bytes[i - 1] == b'!';
-            unmatched_opens.push((if is_image { i - 1 } else { i }, is_image));
+            let is_image = i > 0 && bytes[i - 1] == b'!' && !is_escaped(buf, i - 1);
+            unmatched_opens.push(if is_image { i - 1 } else { i });
         } else if bytes[i] == b']' {
             unmatched_opens.pop();
         }
@@ -399,9 +415,27 @@ fn heal_links(buf: &mut String) {
         }
     }
 
-    // Remove every unmatched opening marker from the end so byte offsets remain valid.
-    for (pos, is_image) in unmatched_opens.into_iter().rev() {
-        buf.drain(pos..pos + if is_image { 2 } else { 1 });
+    // Compact all unmatched markers in place. Repeated String::drain calls
+    // shift the remaining suffix once per marker and become quadratic, while a
+    // second output String needlessly raises the Wasm high-water mark.
+    if !unmatched_opens.is_empty() {
+        let mut markers = unmatched_opens.into_iter().peekable();
+        let mut original_index = 0;
+        let mut remove_through = 0;
+        buf.retain(|character| {
+            let index = original_index;
+            original_index += character.len_utf8();
+            if index < remove_through {
+                return false;
+            }
+            if markers.peek().copied() == Some(index) {
+                markers.next();
+                remove_through = index + if character == '!' { 2 } else { 1 };
+                return false;
+            }
+            true
+        });
+        debug_assert!(markers.next().is_none());
     }
 }
 
@@ -693,6 +727,14 @@ mod tests {
         assert_eq!(heal_markdown("text [incomplete"), "text incomplete");
     }
     #[test]
+    fn heal_unmatched_link_markers_with_unicode_and_images() {
+        assert_eq!(heal_markdown("α[one β![img γ[three"), "αone βimg γthree");
+    }
+    #[test]
+    fn heal_unmatched_link_preserves_an_escaped_image_marker() {
+        assert_eq!(heal_markdown(r"\![not an image"), r"\!not an image");
+    }
+    #[test]
     fn heal_complete_link_unchanged() {
         assert_eq!(
             heal_markdown("[click](http://example.com)"),
@@ -725,6 +767,14 @@ mod tests {
     #[test]
     fn heal_incomplete_html_tag() {
         assert_eq!(heal_markdown("text <div"), "text");
+    }
+    #[test]
+    fn heal_many_exposed_html_tags_reaches_a_fixed_point() {
+        let input = format!("start{}", "<a".repeat(20));
+        let healed = heal_markdown(&input);
+
+        assert_eq!(healed, "start");
+        assert_eq!(heal_markdown(&healed), healed);
     }
     #[test]
     fn heal_complete_html_tag_unchanged() {
@@ -895,6 +945,19 @@ mod tests {
         assert_eq!(heal_markdown("````\ncode"), "````\ncode\n````");
         assert_eq!(heal_markdown("~~~~\ncode"), "~~~~\ncode\n~~~~");
         assert_eq!(heal_markdown("````\ncode\n```"), "````\ncode\n```\n````");
+    }
+
+    #[test]
+    fn fence_detection_accepts_at_most_three_leading_spaces() {
+        for indent in 0..=3 {
+            let prefix = " ".repeat(indent);
+            assert_eq!(
+                heal_markdown(&format!("{prefix}```js\nx")),
+                format!("{prefix}```js\nx\n```")
+            );
+        }
+
+        assert_eq!(heal_markdown("    ```js\nx"), "    ```js\nx```");
     }
 
     #[test]

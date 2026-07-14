@@ -1,19 +1,3 @@
-import katex from "katex";
-import "katex/contrib/mhchem";
-import bash from "@shikijs/langs/bash";
-import css from "@shikijs/langs/css";
-import goLang from "@shikijs/langs/go";
-import html from "@shikijs/langs/html";
-import javascript from "@shikijs/langs/javascript";
-import json from "@shikijs/langs/json";
-import markdown from "@shikijs/langs/markdown";
-import python from "@shikijs/langs/python";
-import rust from "@shikijs/langs/rust";
-import toml from "@shikijs/langs/toml";
-import typescript from "@shikijs/langs/typescript";
-import yaml from "@shikijs/langs/yaml";
-import githubDark from "@shikijs/themes/github-dark";
-import githubLight from "@shikijs/themes/github-light";
 import init, {
 	ansiThemeDark,
 	ansiThemeLight,
@@ -26,14 +10,8 @@ import init, {
 	mdToXml,
 	SyntaxHighlighter,
 } from "comrak-wasm";
-import { createHighlighterCore } from "shiki/core";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import type { ComrakOptions } from "../../types";
 import { createPlaygroundOptions } from "../shared/options.js";
-import {
-	createShikiAdapter,
-	type ShikiHighlighter,
-} from "../shared/shiki-adapter";
 import sampleMarkdown from "./sample.md?raw";
 
 const input = document.getElementById("input") as HTMLTextAreaElement;
@@ -65,37 +43,46 @@ const status = document.getElementById("status") as HTMLSpanElement;
 
 input.value = sampleMarkdown;
 
-let shiki: ShikiHighlighter | null = null;
 let ready = false;
+let shikiModulePromise: Promise<typeof import("./shiki-renderer")> | null =
+	null;
+let katexModulePromise: Promise<typeof import("./katex-renderer")> | null =
+	null;
+const reportedOptionalFailures = new Set<string>();
 
-try {
-	const [, highlighter] = await Promise.all([
-		init(),
-		createHighlighterCore({
-			themes: [githubDark, githubLight],
-			langs: [
-				typescript,
-				javascript,
-				rust,
-				bash,
-				json,
-				html,
-				css,
-				python,
-				goLang,
-				yaml,
-				toml,
-				markdown,
-			],
-			engine: createJavaScriptRegexEngine(),
-		}),
-	]);
-	shiki = highlighter;
-	status.textContent = "Ready";
-	ready = true;
-} catch (err) {
-	console.error("Failed to initialize comrak-wasm playground:", err);
-	status.textContent = "Failed to load — see console";
+type OptionalLoadResult<T> =
+	| { readonly state: "skipped" }
+	| { readonly state: "loaded"; readonly value: T }
+	| { readonly state: "failed"; readonly error: unknown };
+
+async function loadOptional<T>(
+	enabled: boolean,
+	load: () => Promise<T>,
+): Promise<OptionalLoadResult<T>> {
+	if (!enabled) return { state: "skipped" };
+	try {
+		return { state: "loaded", value: await load() };
+	} catch (error) {
+		return { state: "failed", error };
+	}
+}
+
+function loadSyntaxHighlighter(dark: boolean): Promise<SyntaxHighlighter> {
+	shikiModulePromise ??= import("./shiki-renderer");
+	return shikiModulePromise.then((module) =>
+		module.getSyntaxHighlighter(SyntaxHighlighter, dark),
+	);
+}
+
+function loadKatexRenderer(): Promise<typeof import("./katex-renderer")> {
+	katexModulePromise ??= import("./katex-renderer");
+	return katexModulePromise;
+}
+
+function reportOptionalFailure(name: string, error: unknown): void {
+	if (reportedOptionalFailures.has(name)) return;
+	reportedOptionalFailures.add(name);
+	console.error(`Failed to load optional ${name} renderer:`, error);
 }
 
 function getOptions(): ComrakOptions {
@@ -113,33 +100,8 @@ function isDark(): boolean {
 	return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function applyTheme() {
-	document.documentElement.setAttribute(
-		"data-theme",
-		isDark() ? "dark" : "light",
-	);
-}
-
-const shikiThemes = {
-	dark: { name: "github-dark", bg: "#24292e", fg: "#e1e4e8" },
-	light: { name: "github-light", bg: "#ffffff", fg: "#1f2328" },
-};
-
-function createHighlighterAdapter(): SyntaxHighlighter | null {
-	if (!shikiCheck.checked || !shiki) return null;
-	const t = isDark() ? shikiThemes.dark : shikiThemes.light;
-	return createShikiAdapter(SyntaxHighlighter, shiki, t);
-}
-
-function renderMath(container: HTMLElement) {
-	if (!katexCheck.checked) return;
-	container.querySelectorAll("[data-math-style]").forEach((el) => {
-		const display = el.getAttribute("data-math-style") === "display";
-		katex.render(el.textContent ?? "", el as HTMLElement, {
-			displayMode: display,
-			throwOnError: false,
-		});
-	});
+function applyTheme(dark: boolean): void {
+	document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
 }
 
 function ansiToHtml(text: string): string {
@@ -325,20 +287,51 @@ function ansiToHtml(text: string): string {
 	return out.join("");
 }
 
-function updateFormatOptions() {
+function updateFormatOptions(): void {
 	const format = formatSelect.value;
 	formatOptions.style.display =
 		format === "ansi" || format === "text" ? "flex" : "none";
 }
 
-function render() {
-	if (!ready) return;
-	applyTheme();
-	updateFormatOptions();
-	const md = healCheck.checked ? healMarkdown(input.value) : input.value;
+async function render(requestId: number): Promise<void> {
+	if (!ready || requestId !== renderRequestId) return;
+
 	const format = formatSelect.value;
+	const dark = isDark();
+	applyTheme(dark);
+	updateFormatOptions();
+
+	const useShiki =
+		shikiCheck.checked && (format === "preview" || format === "html");
+	const useKatex = katexCheck.checked && format === "preview";
+	const loading = [useShiki ? "Shiki" : "", useKatex ? "KaTeX" : ""].filter(
+		Boolean,
+	);
+	if (loading.length > 0) {
+		status.textContent = `Loading ${loading.join(" and ")}...`;
+	}
+
+	const [shikiResult, katexResult] = await Promise.all([
+		loadOptional(useShiki, () => loadSyntaxHighlighter(dark)),
+		loadOptional(useKatex, loadKatexRenderer),
+	]);
+	if (requestId !== renderRequestId) return;
+
+	const failures: string[] = [];
+	if (shikiResult.state === "failed") {
+		failures.push("Shiki");
+		reportOptionalFailure("Shiki", shikiResult.error);
+	}
+	if (katexResult.state === "failed") {
+		failures.push("KaTeX");
+		reportOptionalFailure("KaTeX", katexResult.error);
+	}
+
+	const md = healCheck.checked ? healMarkdown(input.value) : input.value;
 	const opts = getOptions();
 	const t0 = performance.now();
+	const syntaxHighlighter =
+		shikiResult.state === "loaded" ? shikiResult.value : null;
 
 	let result: string;
 	output.style.background = "";
@@ -346,17 +339,21 @@ function render() {
 
 	switch (format) {
 		case "preview": {
-			const sh = createHighlighterAdapter();
-			result = sh ? mdToHtmlWithPlugins(md, opts, sh) : mdToHtml(md, opts);
+			result = syntaxHighlighter
+				? mdToHtmlWithPlugins(md, opts, syntaxHighlighter)
+				: mdToHtml(md, opts);
 			output.className = "preview";
 			output.innerHTML = result;
-			renderMath(output);
+			if (katexResult.state === "loaded") {
+				katexResult.value.renderMath(output);
+			}
 			outputLabel.textContent = "HTML (preview)";
 			break;
 		}
 		case "html": {
-			const sh = createHighlighterAdapter();
-			result = sh ? mdToHtmlWithPlugins(md, opts, sh) : mdToHtml(md, opts);
+			result = syntaxHighlighter
+				? mdToHtmlWithPlugins(md, opts, syntaxHighlighter)
+				: mdToHtml(md, opts);
 			output.className = "source";
 			output.textContent = result;
 			outputLabel.textContent = "HTML (source)";
@@ -387,12 +384,10 @@ function render() {
 			outputLabel.textContent = "Text";
 			break;
 		case "ansi": {
-			const dark = isDark();
 			const theme = dark ? ansiThemeDark() : ansiThemeLight();
 			theme.showMarkdown = showMarkdownCheck.checked;
 			theme.showUrls = showUrlsCheck.checked;
-			if (tableShadowCheck.checked) theme.tableShadow = "░";
-			else delete theme.tableShadow;
+			theme.tableShadow = tableShadowCheck.checked ? "░" : "";
 			result = mdToAnsi(md, opts, theme);
 			output.className = "ansi";
 			if (dark) {
@@ -411,30 +406,59 @@ function render() {
 	}
 
 	const ms = (performance.now() - t0).toFixed(1);
-	status.textContent = `Rendered in ${ms}ms`;
+	const warning =
+		failures.length > 0 ? ` · ${failures.join(" and ")} unavailable` : "";
+	status.textContent = `Rendered in ${ms}ms${warning}`;
 }
 
 let renderTimer: number | undefined;
+let renderRequestId = 0;
+
 function scheduleRender(): void {
 	window.clearTimeout(renderTimer);
-	renderTimer = window.setTimeout(render, 75);
+	const requestId = ++renderRequestId;
+	renderTimer = window.setTimeout(() => void render(requestId), 75);
+}
+
+function renderNow(): void {
+	window.clearTimeout(renderTimer);
+	const requestId = ++renderRequestId;
+	void render(requestId);
 }
 
 input.addEventListener("input", scheduleRender);
-formatSelect.addEventListener("change", render);
-healCheck.addEventListener("change", render);
-rawHtmlSelect.addEventListener("change", render);
-extensionsCheck.addEventListener("change", render);
-wikilinkModeSelect.addEventListener("change", render);
-shikiCheck.addEventListener("change", render);
-katexCheck.addEventListener("change", render);
-themeSelect.addEventListener("change", render);
-showMarkdownCheck.addEventListener("change", render);
-showUrlsCheck.addEventListener("change", render);
-tableShadowCheck.addEventListener("change", render);
+formatSelect.addEventListener("change", renderNow);
+healCheck.addEventListener("change", renderNow);
+rawHtmlSelect.addEventListener("change", renderNow);
+extensionsCheck.addEventListener("change", renderNow);
+wikilinkModeSelect.addEventListener("change", renderNow);
+shikiCheck.addEventListener("change", renderNow);
+katexCheck.addEventListener("change", renderNow);
+themeSelect.addEventListener("change", renderNow);
+showMarkdownCheck.addEventListener("change", renderNow);
+showUrlsCheck.addEventListener("change", renderNow);
+tableShadowCheck.addEventListener("change", renderNow);
 window
 	.matchMedia("(prefers-color-scheme: dark)")
-	.addEventListener("change", render);
+	.addEventListener("change", renderNow);
+
+window.addEventListener("pagehide", () => {
+	window.clearTimeout(renderTimer);
+	renderRequestId++;
+
+	const shikiModule = shikiModulePromise;
+	shikiModulePromise = null;
+	katexModulePromise = null;
+	if (shikiModule) {
+		void shikiModule
+			.then((module) => module.releaseShiki())
+			.catch(() => undefined);
+	}
+});
+
+window.addEventListener("pageshow", (event) => {
+	if (event.persisted) renderNow();
+});
 
 // Handle anchor clicks within the output pane (e.g., footnotes)
 output.addEventListener("click", (e) => {
@@ -449,4 +473,16 @@ output.addEventListener("click", (e) => {
 	}
 });
 
-render();
+async function initialize(): Promise<void> {
+	try {
+		await init();
+		ready = true;
+		status.textContent = "Ready";
+		renderNow();
+	} catch (error) {
+		console.error("Failed to initialize comrak-wasm playground:", error);
+		status.textContent = "Failed to load — see console";
+	}
+}
+
+void initialize();

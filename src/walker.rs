@@ -2,12 +2,16 @@ use comrak::arena_tree::{Node, NodeEdge};
 use comrak::nodes::{Ast, NodeValue, TableAlignment};
 use std::cell::RefCell;
 use std::fmt::Write;
-use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthStr;
 
 pub type AstNode<'a> = Node<'a, RefCell<Ast>>;
 
 const HR: &str = "────────────────────────────────────────";
 pub const MAX_NESTING_DEPTH: usize = 512;
+
+// Keep table padding linear in the number of cells. Cell content is never
+// truncated; values wider than this limit overflow the decorative border.
+const MAX_TABLE_COLUMN_WIDTH: usize = 256;
 
 pub fn nesting_within_limit<'a>(root: &'a AstNode<'a>) -> bool {
     let mut depth = 0;
@@ -33,6 +37,11 @@ pub trait Formatter {
     fn show_urls(&self) -> bool;
     fn show_markdown(&self) -> bool;
 
+    /// Write literal content originating from the AST or caller input.
+    fn write_literal(&self, out: &mut String, literal: &str) {
+        out.push_str(literal);
+    }
+
     // --- Style hooks (override for ANSI) ---
     fn style(&self, _out: &mut String, _name: &str) {}
     fn reset(&self, _out: &mut String) {}
@@ -56,7 +65,7 @@ pub trait Formatter {
             self.style(out, "code_block_border");
             out.push_str("```");
             if !info.is_empty() {
-                out.push_str(info);
+                self.write_literal(out, info);
             }
             self.style_end(out, "code_block_border");
             out.push('\n');
@@ -67,7 +76,7 @@ pub trait Formatter {
         if self.show_markdown() {
             out.push_str("  ");
         }
-        out.push_str(line);
+        self.write_literal(out, line);
         self.style_end(out, "code_block");
         out.push('\n');
     }
@@ -89,7 +98,7 @@ pub trait Formatter {
 
     fn alert_title(&self, out: &mut String, alert: &comrak::nodes::NodeAlert) {
         out.push('[');
-        out.push_str(alert.title.as_deref().unwrap_or("Alert"));
+        self.write_literal(out, alert.title.as_deref().unwrap_or("Alert"));
         out.push(']');
     }
 
@@ -165,7 +174,7 @@ pub trait Formatter {
         if self.show_markdown() {
             out.push('`');
         }
-        out.push_str(literal);
+        self.write_literal(out, literal);
         if self.show_markdown() {
             out.push('`');
         }
@@ -181,7 +190,7 @@ pub trait Formatter {
             out.push(' ');
             self.style(out, "link_url");
             out.push('(');
-            out.push_str(url);
+            self.write_literal(out, url);
             out.push(')');
             self.style_end(out, "link_url");
         }
@@ -191,7 +200,7 @@ pub trait Formatter {
             out.push(' ');
             self.style(out, "link_url");
             out.push('(');
-            out.push_str(url);
+            self.write_literal(out, url);
             out.push(')');
             self.style_end(out, "link_url");
         }
@@ -202,19 +211,11 @@ pub trait Formatter {
         if self.show_markdown() {
             out.push('$');
         }
-        out.push_str(literal);
+        self.write_literal(out, literal);
         if self.show_markdown() {
             out.push('$');
         }
         self.style_end(out, "math");
-    }
-
-    fn wiki_link(&self, out: &mut String, url: &str) {
-        self.style(out, "link");
-        out.push_str("[[");
-        out.push_str(url);
-        out.push_str("]]");
-        self.style_end(out, "link");
     }
 
     // --- Table ---
@@ -256,7 +257,7 @@ pub fn walk_and_format<'a, F: Formatter>(root: &'a AstNode<'a>, fmt: &F) -> Stri
                 footnotes.push('\n');
             }
             footnotes.push_str("[^");
-            footnotes.push_str(&fd.name);
+            fmt.write_literal(&mut footnotes, &fd.name);
             footnotes.push_str("]: ");
             let mut fn_ctx = WalkCtx {
                 list_index: Vec::new(),
@@ -308,41 +309,45 @@ fn display_width(s: &str) -> usize {
     let bytes = s.as_bytes();
 
     while i < bytes.len() {
-        if bytes[i] == b'\x1b' {
-            match bytes.get(i + 1) {
-                Some(b'[') => {
-                    i += 2;
-                    while i < bytes.len() {
-                        let byte = bytes[i];
-                        i += 1;
-                        if (0x40..=0x7e).contains(&byte) {
-                            break;
-                        }
-                    }
-                }
-                Some(b']') => {
-                    i += 2;
-                    while i < bytes.len() {
-                        if bytes[i] == b'\x07' {
-                            i += 1;
-                            break;
-                        }
-                        if bytes[i] == b'\x1b' && bytes.get(i + 1) == Some(&b'\\') {
-                            i += 2;
-                            break;
-                        }
-                        i += 1;
-                    }
-                }
-                Some(_) => i += 2,
-                None => i += 1,
-            }
-            continue;
-        }
+        let Some(offset) = bytes[i..].iter().position(|byte| *byte == b'\x1b') else {
+            width += UnicodeWidthStr::width(&s[i..]);
+            break;
+        };
+        let escape_start = i + offset;
+        width += UnicodeWidthStr::width(&s[i..escape_start]);
 
-        let character = s[i..].chars().next().expect("index is on a UTF-8 boundary");
-        width += UnicodeWidthChar::width(character).unwrap_or(0);
-        i += character.len_utf8();
+        i = escape_start;
+        match bytes.get(i + 1) {
+            Some(b'[') => {
+                i += 2;
+                while i < bytes.len() {
+                    let byte = bytes[i];
+                    i += 1;
+                    if (0x40..=0x7e).contains(&byte) {
+                        break;
+                    }
+                }
+            }
+            Some(b']') => {
+                i += 2;
+                while i < bytes.len() {
+                    if bytes[i] == b'\x07' {
+                        i += 1;
+                        break;
+                    }
+                    if bytes[i] == b'\x1b' && bytes.get(i + 1) == Some(&b'\\') {
+                        i += 2;
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            Some(next) if next.is_ascii() => i += 2,
+            // Skip only ESC before a multi-byte UTF-8 character. Advancing by
+            // two bytes would land inside that character.
+            Some(_) => i += 1,
+            None => i += 1,
+        }
     }
 
     width
@@ -350,37 +355,47 @@ fn display_width(s: &str) -> usize {
 
 /// Walk inline nodes only — no block-level side effects.
 /// Used by both the main walker (for inline content) and table cell rendering.
-fn walk_inline<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, fmt: &F) {
+fn walk_inline<'a, F: Formatter>(
+    node: &'a AstNode<'a>,
+    out: &mut String,
+    ctx: Option<&WalkCtx>,
+    fmt: &F,
+) {
     match &node.data.borrow().value {
-        NodeValue::Text(t) => out.push_str(t),
+        NodeValue::Text(t) => fmt.write_literal(out, t),
         NodeValue::SoftBreak => out.push(' '),
-        NodeValue::LineBreak => out.push('\n'),
+        NodeValue::LineBreak => {
+            out.push('\n');
+            if let Some(ctx) = ctx {
+                write_quote_prefix(out, ctx, fmt);
+            }
+        }
         NodeValue::Code(c) => fmt.code_span(out, &c.literal),
         NodeValue::Strong => {
             fmt.strong_start(out);
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
             fmt.strong_end(out);
         }
         NodeValue::Emph => {
             fmt.emph_start(out);
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
             fmt.emph_end(out);
         }
         NodeValue::Strikethrough => {
             fmt.strikethrough_start(out);
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
             fmt.strikethrough_end(out);
         }
         NodeValue::Underline => {
             fmt.underline_start(out);
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
             fmt.underline_end(out);
         }
@@ -391,45 +406,77 @@ fn walk_inline<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, fmt: &
         | NodeValue::SpoileredText
         | NodeValue::Escaped => {
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
         }
         NodeValue::Link(link) => {
             fmt.link_start(out, &link.url);
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
             fmt.link_end(out, &link.url);
         }
         NodeValue::Image(link) => {
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
             fmt.image_end(out, &link.url);
         }
         NodeValue::Math(m) => fmt.math_span(out, m.literal.trim()),
-        NodeValue::WikiLink(wl) => fmt.wiki_link(out, &wl.url),
+        NodeValue::WikiLink(link) => {
+            fmt.link_start(out, &link.url);
+            for child in node.children() {
+                walk_inline(child, out, ctx, fmt);
+            }
+            fmt.link_end(out, &link.url);
+        }
         NodeValue::FootnoteReference(r) => {
             out.push_str("[^");
-            out.push_str(&r.name);
+            fmt.write_literal(out, &r.name);
             out.push(']');
         }
-        NodeValue::ShortCode(sc) => out.push_str(&sc.emoji),
-        _ => {
+        NodeValue::ShortCode(sc) => fmt.write_literal(out, &sc.emoji),
+        NodeValue::EscapedTag(marker) => {
+            fmt.write_literal(out, marker);
             for child in node.children() {
-                walk_inline(child, out, fmt);
+                walk_inline(child, out, ctx, fmt);
             }
+            fmt.write_literal(out, marker);
         }
+        NodeValue::Raw(raw) => fmt.write_literal(out, raw),
+        NodeValue::HtmlInline(_) | NodeValue::HeexInline(_) => (),
+
+        NodeValue::Document
+        | NodeValue::FrontMatter(_)
+        | NodeValue::BlockQuote
+        | NodeValue::List(_)
+        | NodeValue::Item(_)
+        | NodeValue::DescriptionList
+        | NodeValue::DescriptionItem(_)
+        | NodeValue::DescriptionTerm
+        | NodeValue::DescriptionDetails
+        | NodeValue::CodeBlock(_)
+        | NodeValue::HtmlBlock(_)
+        | NodeValue::HeexBlock(_)
+        | NodeValue::Paragraph
+        | NodeValue::Heading(_)
+        | NodeValue::ThematicBreak
+        | NodeValue::FootnoteDefinition(_)
+        | NodeValue::Table(_)
+        | NodeValue::TableRow(_)
+        | NodeValue::TableCell
+        | NodeValue::TaskItem(_)
+        | NodeValue::MultilineBlockQuote(_)
+        | NodeValue::Alert(_)
+        | NodeValue::Subtext
+        | NodeValue::BlockDirective(_) => unreachable!("block node passed to walk_inline"),
     }
 }
 
-/// Render a table cell's inline content through the formatter.
-fn render_cell_styled<'a, F: Formatter>(cell_node: &'a AstNode<'a>, fmt: &F) -> String {
-    let mut s = String::new();
+fn render_cell_styled<'a, F: Formatter>(cell_node: &'a AstNode<'a>, out: &mut String, fmt: &F) {
     for child in cell_node.children() {
-        walk_inline(child, &mut s, fmt);
+        walk_inline(child, out, None, fmt);
     }
-    s
 }
 
 fn render_table<'a, F: Formatter>(
@@ -444,36 +491,34 @@ fn render_table<'a, F: Formatter>(
         _ => &[],
     };
 
-    // Collect styled text and cached display widths per cell
-    let mut rows: Vec<Vec<(String, usize)>> = Vec::new();
+    // First pass: render one cell at a time into reusable scratch storage and
+    // retain only its display width.
+    let mut scratch = String::new();
+    let mut cell_widths = Vec::new();
+    let mut widths = Vec::new();
+    let mut row_count = 0;
     for row in node.children() {
-        let mut cells: Vec<(String, usize)> = Vec::new();
-        for cell in row.children() {
-            let s = render_cell_styled(cell, fmt);
-            let w = display_width(&s);
-            cells.push((s, w));
-        }
-        rows.push(cells);
-    }
+        row_count += 1;
+        for (column, cell) in row.children().enumerate() {
+            scratch.clear();
+            render_cell_styled(cell, &mut scratch, fmt);
+            let cell_width = display_width(&scratch);
+            cell_widths.push(cell_width);
 
-    if rows.is_empty() {
-        return;
-    }
-
-    let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
-    let mut widths = vec![0usize; cols];
-    for row in &rows {
-        for (i, (_, cw)) in row.iter().enumerate() {
-            if i < cols {
-                widths[i] = widths[i].max(*cw);
+            let layout_width = cell_width.min(MAX_TABLE_COLUMN_WIDTH);
+            if column == widths.len() {
+                widths.push(layout_width.max(3));
+            } else {
+                widths[column] = widths[column].max(layout_width);
             }
         }
     }
-    for w in &mut widths {
-        if *w < 3 {
-            *w = 3;
-        }
+
+    if row_count == 0 {
+        return;
     }
+
+    let cols = widths.len();
 
     let shadow = fmt.table_shadow_char();
     // Total table width: 1 (left border) + sum(col_width + 2 padding + 1 separator) - 1 last sep + 1 right border
@@ -500,16 +545,24 @@ fn render_table<'a, F: Formatter>(
     fmt.table_border_style_end(out);
     out.push('\n');
 
-    for (ri, row) in rows.iter().enumerate() {
+    // Second pass: render each cell directly into the final output.
+    let mut cached_widths = cell_widths.into_iter();
+    for (ri, row) in node.children().enumerate() {
         let is_header = ri == 0;
+        let mut cells = row.children();
         write_quote_prefix(out, ctx, fmt);
         fmt.table_border_style_start(out);
         out.push('│');
         fmt.table_border_style_end(out);
         for (i, w) in widths.iter().enumerate() {
-            let (styled, cw) = row.get(i).map(|c| (c.0.as_str(), c.1)).unwrap_or(("", 0));
+            let cell = cells.next();
+            let cell_width = if cell.is_some() {
+                cached_widths.next().unwrap_or(0)
+            } else {
+                0
+            };
             let align = alignments.get(i).copied().unwrap_or(TableAlignment::None);
-            let pad = w.saturating_sub(cw);
+            let pad = w.saturating_sub(cell_width);
 
             out.push(' ');
             if is_header {
@@ -520,7 +573,9 @@ fn render_table<'a, F: Formatter>(
                     for _ in 0..pad {
                         out.push(' ');
                     }
-                    out.push_str(styled);
+                    if let Some(cell) = cell {
+                        render_cell_styled(cell, out, fmt);
+                    }
                 }
                 TableAlignment::Center => {
                     let left = pad / 2;
@@ -528,13 +583,17 @@ fn render_table<'a, F: Formatter>(
                     for _ in 0..left {
                         out.push(' ');
                     }
-                    out.push_str(styled);
+                    if let Some(cell) = cell {
+                        render_cell_styled(cell, out, fmt);
+                    }
                     for _ in 0..right {
                         out.push(' ');
                     }
                 }
                 _ => {
-                    out.push_str(styled);
+                    if let Some(cell) = cell {
+                        render_cell_styled(cell, out, fmt);
+                    }
                     for _ in 0..pad {
                         out.push(' ');
                     }
@@ -549,7 +608,7 @@ fn render_table<'a, F: Formatter>(
             fmt.table_border_style_end(out);
         }
         if let Some(sc) = shadow {
-            out.push_str(sc);
+            fmt.write_literal(out, sc);
         }
         out.push('\n');
 
@@ -568,7 +627,7 @@ fn render_table<'a, F: Formatter>(
             out.push('┤');
             fmt.table_border_style_end(out);
             if let Some(sc) = shadow {
-                out.push_str(sc);
+                fmt.write_literal(out, sc);
             }
             out.push('\n');
         }
@@ -589,7 +648,7 @@ fn render_table<'a, F: Formatter>(
     out.push('┘');
     fmt.table_border_style_end(out);
     if let Some(sc) = shadow {
-        out.push_str(sc);
+        fmt.write_literal(out, sc);
     }
     out.push('\n');
 
@@ -598,7 +657,7 @@ fn render_table<'a, F: Formatter>(
         write_quote_prefix(out, ctx, fmt);
         out.push_str("  ");
         for _ in 0..table_width - 1 {
-            out.push_str(sc);
+            fmt.write_literal(out, sc);
         }
         out.push('\n');
     }
@@ -656,7 +715,7 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             }
         }
 
-        NodeValue::FrontMatter(_) | NodeValue::HtmlBlock(_) | NodeValue::HtmlInline(_) => (),
+        NodeValue::FrontMatter(_) | NodeValue::HtmlBlock(_) | NodeValue::HeexBlock(_) => (),
 
         NodeValue::Paragraph => {
             if ctx.needs_newline {
@@ -772,76 +831,6 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             ctx.needs_newline = true;
         }
 
-        // Leaf inlines — delegate to walk_inline (shared with table cells)
-        NodeValue::Text(_)
-        | NodeValue::Code(_)
-        | NodeValue::SoftBreak
-        | NodeValue::Math(_)
-        | NodeValue::FootnoteReference(_)
-        | NodeValue::WikiLink(_)
-        | NodeValue::ShortCode(_) => {
-            walk_inline(node, out, fmt);
-        }
-
-        NodeValue::LineBreak => {
-            out.push('\n');
-            write_quote_prefix(out, ctx, fmt);
-        }
-
-        // Container inlines — use walk_inline for formatting but recurse
-        // through walk() to handle LineBreak with quote prefix
-        NodeValue::Strong => {
-            fmt.strong_start(out);
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-            fmt.strong_end(out);
-        }
-        NodeValue::Emph => {
-            fmt.emph_start(out);
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-            fmt.emph_end(out);
-        }
-        NodeValue::Strikethrough => {
-            fmt.strikethrough_start(out);
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-            fmt.strikethrough_end(out);
-        }
-        NodeValue::Underline => {
-            fmt.underline_start(out);
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-            fmt.underline_end(out);
-        }
-        NodeValue::Highlight
-        | NodeValue::Insert
-        | NodeValue::Superscript
-        | NodeValue::Subscript
-        | NodeValue::SpoileredText
-        | NodeValue::Escaped => {
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-        }
-        NodeValue::Link(link) => {
-            fmt.link_start(out, &link.url);
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-            fmt.link_end(out, &link.url);
-        }
-        NodeValue::Image(link) => {
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-            fmt.image_end(out, &link.url);
-        }
-
         NodeValue::Table(_) => {
             render_table(node, out, ctx, fmt);
         }
@@ -873,20 +862,22 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
             }
         }
 
-        NodeValue::Raw(s) => out.push_str(s),
-        NodeValue::EscapedTag(s) => out.push_str(s),
         NodeValue::BlockDirective(_) => {
             for child in node.children() {
                 walk(child, out, ctx, fmt);
             }
         }
-        NodeValue::HeexBlock(_) | NodeValue::HeexInline(_) => (),
+
+        inline => {
+            debug_assert!(!inline.block());
+            walk_inline(node, out, Some(ctx), fmt);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::display_width;
+    use super::{display_width, MAX_TABLE_COLUMN_WIDTH};
     use crate::ansi::{format_ansi, AnsiTheme};
     use crate::text::format_text;
     use comrak::{parse_document, Arena, Options};
@@ -923,6 +914,25 @@ mod tests {
     }
 
     #[test]
+    fn display_width_counts_emoji_sequences_as_terminal_graphemes() {
+        assert_eq!(display_width("👩‍💻"), 2);
+        assert_eq!(display_width("👨‍👩‍👧‍👦"), 2);
+        assert_eq!(display_width("🇭🇺"), 2);
+        assert_eq!(display_width("❤️"), 2);
+        assert_eq!(display_width("\x1b[31m👩‍💻\x1b[0m"), 2);
+        assert_eq!(
+            display_width("\x1b]8;;https://example.test\x1b\\👨‍👩‍👧‍👦\x1b]8;;\x1b\\"),
+            2
+        );
+    }
+
+    #[test]
+    fn display_width_keeps_utf8_boundaries_after_unknown_escape_sequences() {
+        assert_eq!(display_width("\x1bé"), 1);
+        assert_eq!(display_width("\x1bc"), 0);
+    }
+
+    #[test]
     fn block_directive_preserves_text_content() {
         let mut options = opts();
         options.extension.block_directive = true;
@@ -930,6 +940,45 @@ mod tests {
         let root = parse_document(&arena, ":::warning\ninside **bold** text\n:::", &options);
 
         assert_eq!(format_text(root, false, false, None), "inside bold text");
+    }
+
+    #[test]
+    fn escaped_tags_preserve_markers_and_content_in_blocks_and_tables() {
+        let mut options = Options::default();
+        options.extension.subscript = true;
+        options.extension.spoiler = true;
+        options.extension.table = true;
+
+        let arena = Arena::new();
+        let root = parse_document(&arena, "~~foo~~ and |bar|", &options);
+        assert_eq!(format_text(root, false, false, None), "~~foo~~ and |bar|");
+        assert_eq!(format_ansi(root, None), "~~foo~~ and |bar|");
+
+        let table_arena = Arena::new();
+        let table = parse_document(&table_arena, "| value |\n|---|\n| ~~foo~~ |", &options);
+        assert!(format_text(table, false, false, None).contains("~~foo~~"));
+    }
+
+    #[test]
+    fn wikilinks_preserve_titles_and_optional_urls() {
+        for (markdown, configure) in [
+            ("[[/guides/comrak|Comrak guide]]", (true, false)),
+            ("[[Comrak guide|/guides/comrak]]", (false, true)),
+        ] {
+            let mut options = Options::default();
+            options.extension.wikilinks_title_after_pipe = configure.0;
+            options.extension.wikilinks_title_before_pipe = configure.1;
+            let arena = Arena::new();
+            let root = parse_document(&arena, markdown, &options);
+
+            assert_eq!(format_text(root, false, false, None), "Comrak guide");
+            assert_eq!(
+                format_text(root, true, false, None),
+                "Comrak guide (/guides/comrak)"
+            );
+            let ansi = format_ansi(root, None);
+            assert!(ansi.contains("Comrak guide"));
+        }
     }
 
     fn text(md: &str) -> String {
@@ -1136,6 +1185,31 @@ mod tests {
         let t = text("| l | c | r |\n|:--|:--:|--:|\n| x | y | z |");
         // Right-aligned: z should have leading space
         assert!(t.contains("z"));
+    }
+    #[test]
+    fn table_alignment_and_inline_content_have_stable_output() {
+        let t = text(
+            "| left | center | right |\n|:---|:---:|---:|\n| **bold** | [link](http://x) | `code` |",
+        );
+        assert_eq!(
+            t,
+            "┌──────┬────────┬───────┐\n\
+             │ left │ center │ right │\n\
+             ├──────┼────────┼───────┤\n\
+             │ bold │  link  │  code │\n\
+             └──────┴────────┴───────┘"
+        );
+    }
+
+    #[test]
+    fn table_padding_is_bounded_without_truncating_wide_cells() {
+        let wide = "x".repeat(MAX_TABLE_COLUMN_WIDTH * 2);
+        let rows = (0..512).map(|_| "| a |").collect::<Vec<_>>().join("\n");
+        let markdown = format!("| {wide} |\n|---|\n{rows}");
+        let rendered = text(&markdown);
+
+        assert!(rendered.contains(&wide));
+        assert!(rendered.len() < 200_000);
     }
     #[test]
     fn table_shadow() {

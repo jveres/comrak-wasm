@@ -60,6 +60,303 @@ export class HeadingAdapter {
 }
 if (Symbol.dispose) HeadingAdapter.prototype[Symbol.dispose] = HeadingAdapter.prototype.free;
 
+/**
+ * ANSI theme prepared once for repeated renders without repeated JavaScript
+ * deserialization, string allocation, or default merging.
+ */
+export class PreparedAnsiTheme {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PreparedAnsiThemeFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_preparedansitheme_free(ptr, 0);
+    }
+    /**
+     * @param {any | null} [theme]
+     */
+    constructor(theme) {
+        const ret = wasm.preparedansitheme_new(isLikeNone(theme) ? 0 : addToExternrefTable0(theme));
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        PreparedAnsiThemeFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) PreparedAnsiTheme.prototype[Symbol.dispose] = PreparedAnsiTheme.prototype.free;
+
+export class PreparedCodefenceRenderers {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PreparedCodefenceRenderersFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_preparedcodefencerenderers_free(ptr, 0);
+    }
+    /**
+     * @param {any} renderers
+     */
+    constructor(renderers) {
+        const ret = wasm.preparedcodefencerenderers_new(renderers);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        PreparedCodefenceRenderersFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) PreparedCodefenceRenderers.prototype[Symbol.dispose] = PreparedCodefenceRenderers.prototype.free;
+
+/**
+ * Options prepared once for repeated renders without repeated JS
+ * deserialization and comrak option mapping.
+ */
+export class PreparedOptions {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PreparedOptionsFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_preparedoptions_free(ptr, 0);
+    }
+    /**
+     * @param {string} md
+     * @param {PreparedCodefenceRenderers} renderers
+     * @param {SyntaxHighlighter | null} [syntax_highlighter]
+     * @param {HeadingAdapter | null} [heading_adapter]
+     * @returns {string}
+     */
+    __mdToHtmlWithCodefenceRenderersOwned(md, renderers, syntax_highlighter, heading_adapter) {
+        let deferred4_0;
+        let deferred4_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            _assertClass(renderers, PreparedCodefenceRenderers);
+            let ptr1 = 0;
+            if (!isLikeNone(syntax_highlighter)) {
+                _assertClass(syntax_highlighter, SyntaxHighlighter);
+                ptr1 = syntax_highlighter.__destroy_into_raw();
+            }
+            let ptr2 = 0;
+            if (!isLikeNone(heading_adapter)) {
+                _assertClass(heading_adapter, HeadingAdapter);
+                ptr2 = heading_adapter.__destroy_into_raw();
+            }
+            const ret = wasm.preparedoptions___mdToHtmlWithCodefenceRenderersOwned(this.__wbg_ptr, ptr0, len0, renderers.__wbg_ptr, ptr1, ptr2);
+            deferred4_0 = ret[0];
+            deferred4_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @param {SyntaxHighlighter | null} [syntax_highlighter]
+     * @param {HeadingAdapter | null} [heading_adapter]
+     * @returns {string}
+     */
+    __mdToHtmlWithPluginsOwned(md, syntax_highlighter, heading_adapter) {
+        let deferred4_0;
+        let deferred4_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            let ptr1 = 0;
+            if (!isLikeNone(syntax_highlighter)) {
+                _assertClass(syntax_highlighter, SyntaxHighlighter);
+                ptr1 = syntax_highlighter.__destroy_into_raw();
+            }
+            let ptr2 = 0;
+            if (!isLikeNone(heading_adapter)) {
+                _assertClass(heading_adapter, HeadingAdapter);
+                ptr2 = heading_adapter.__destroy_into_raw();
+            }
+            const ret = wasm.preparedoptions___mdToHtmlWithPluginsOwned(this.__wbg_ptr, ptr0, len0, ptr1, ptr2);
+            deferred4_0 = ret[0];
+            deferred4_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @returns {string | undefined}
+     */
+    getFrontmatter(md) {
+        const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.preparedoptions_getFrontmatter(this.__wbg_ptr, ptr0, len0);
+        let v2;
+        if (ret[0] !== 0) {
+            v2 = getStringFromWasm0(ret[0], ret[1]).slice();
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v2;
+    }
+    /**
+     * @param {string} md
+     * @param {any} theme
+     * @returns {string}
+     */
+    mdToAnsi(md, theme) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.preparedoptions_mdToAnsi(this.__wbg_ptr, ptr0, len0, theme);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @param {PreparedAnsiTheme} theme
+     * @returns {string}
+     */
+    mdToAnsiWithTheme(md, theme) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            _assertClass(theme, PreparedAnsiTheme);
+            const ret = wasm.preparedoptions_mdToAnsiWithTheme(this.__wbg_ptr, ptr0, len0, theme.__wbg_ptr);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @returns {string}
+     */
+    mdToCommonmark(md) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.preparedoptions_mdToCommonmark(this.__wbg_ptr, ptr0, len0);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @returns {string}
+     */
+    mdToHtml(md) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.preparedoptions_mdToHtml(this.__wbg_ptr, ptr0, len0);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @param {boolean | null} [show_urls]
+     * @param {boolean | null} [show_markdown]
+     * @param {string | null} [table_shadow]
+     * @returns {string}
+     */
+    mdToText(md, show_urls, show_markdown, table_shadow) {
+        let deferred4_0;
+        let deferred4_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            var ptr1 = isLikeNone(table_shadow) ? 0 : passStringToWasm0(table_shadow, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var len1 = WASM_VECTOR_LEN;
+            const ret = wasm.preparedoptions_mdToText(this.__wbg_ptr, ptr0, len0, isLikeNone(show_urls) ? 0xFFFFFF : show_urls ? 1 : 0, isLikeNone(show_markdown) ? 0xFFFFFF : show_markdown ? 1 : 0, ptr1, len1);
+            var ptr3 = ret[0];
+            var len3 = ret[1];
+            if (ret[3]) {
+                ptr3 = 0; len3 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred4_0 = ptr3;
+            deferred4_1 = len3;
+            return getStringFromWasm0(ptr3, len3);
+        } finally {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        }
+    }
+    /**
+     * @param {string} md
+     * @returns {string}
+     */
+    mdToXml(md) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.preparedoptions_mdToXml(this.__wbg_ptr, ptr0, len0);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @param {any | null} [options]
+     */
+    constructor(options) {
+        const ret = wasm.preparedoptions_new(isLikeNone(options) ? 0 : addToExternrefTable0(options));
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        PreparedOptionsFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) PreparedOptions.prototype[Symbol.dispose] = PreparedOptions.prototype.free;
+
 export class SyntaxHighlighter {
     static __wrap(ptr) {
         const obj = Object.create(SyntaxHighlighter.prototype);
@@ -309,6 +606,34 @@ export function mdToAnsi(md, options, theme) {
 /**
  * @param {string} md
  * @param {any} options
+ * @param {PreparedAnsiTheme} theme
+ * @returns {string}
+ */
+export function mdToAnsiWithTheme(md, options, theme) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(theme, PreparedAnsiTheme);
+        const ret = wasm.mdToAnsiWithTheme(ptr0, len0, options, theme.__wbg_ptr);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {string} md
+ * @param {any} options
  * @returns {string}
  */
 export function mdToCommonmark(md, options) {
@@ -532,8 +857,8 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbg_apply_3ac86a26fdb56c05: function() { return handleError(function (arg0, arg1, arg2) {
-            const ret = arg0.apply(arg1, arg2);
+        __wbg_call_44b7209e1e252e6a: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
+            const ret = arg0.call(arg1, arg2, arg3, arg4);
             return ret;
         }, arguments); },
         __wbg_call_a6e5c5dce5018821: function() { return handleError(function (arg0, arg1, arg2) {
@@ -606,6 +931,10 @@ function __wbg_get_imports() {
             const ret = arg0.length;
             return ret;
         },
+        __wbg_new_5e245ef5857d7f33: function(arg0, arg1) {
+            const ret = new TypeError(getStringFromWasm0(arg0, arg1));
+            return ret;
+        },
         __wbg_new_6d3d7e359b2d786c: function(arg0, arg1) {
             const ret = new RangeError(getStringFromWasm0(arg0, arg1));
             return ret;
@@ -620,10 +949,6 @@ function __wbg_get_imports() {
         },
         __wbg_new_da52cf8fe3429cb2: function() {
             const ret = new Object();
-            return ret;
-        },
-        __wbg_of_b0cd2e09b31a9684: function(arg0, arg1, arg2) {
-            const ret = Array.of(arg0, arg1, arg2);
             return ret;
         },
         __wbg_prototypesetcall_4770620bbe4688a0: function(arg0, arg1, arg2) {
@@ -673,6 +998,15 @@ const CodefenceRendererFinalization = (typeof FinalizationRegistry === 'undefine
 const HeadingAdapterFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_headingadapter_free(ptr, 1));
+const PreparedAnsiThemeFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_preparedansitheme_free(ptr, 1));
+const PreparedCodefenceRenderersFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_preparedcodefencerenderers_free(ptr, 1));
+const PreparedOptionsFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_preparedoptions_free(ptr, 1));
 const SyntaxHighlighterFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_syntaxhighlighter_free(ptr, 1));

@@ -19,7 +19,7 @@ export interface ShikiHighlighter {
  * package resolves against the caller's own Wasm instance.
  */
 export type SyntaxHighlighterCtor<T> = new (
-	highlight: (code: string, lang: string | undefined) => string,
+	highlight: (code: string, lang: string) => string,
 	pre: (attrs: Record<string, string>) => string,
 	code: (attrs: Record<string, string>) => string,
 ) => T;

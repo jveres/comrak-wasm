@@ -20,7 +20,10 @@ To work on the repository itself, see [Development](#development).
 
 ## Initialize
 
-Initialize the Wasm module once before calling any renderer.
+Initialize the Wasm module once before calling any renderer. Concurrent calls
+to the default initializer share the same in-flight initialization; the first
+call supplies the module input. Do not call `initSync` while asynchronous
+initialization is still in progress.
 
 ### Browser
 
@@ -95,6 +98,34 @@ const html = mdToHtml(markdown, {
 The TypeScript declarations expose the full supported extension, parse, and
 render option surface.
 
+### Reuse prepared options
+
+Repeated small renders can avoid deserializing and mapping the same options on
+every call. Create a `PreparedOptions` handle once and dispose it when the
+calling scope no longer needs it.
+
+```typescript
+import { PreparedOptions } from "comrak-wasm";
+
+const renderer = new PreparedOptions({
+  extension: { strikethrough: true, table: true },
+  render: { compactHtml: true },
+});
+
+try {
+  const first = renderer.mdToHtml(firstMarkdown);
+  const second = renderer.mdToHtml(secondMarkdown);
+} finally {
+  renderer.free();
+}
+```
+
+The handle also exposes CommonMark, XML, text, ANSI, frontmatter, and plugin
+methods. Use `PreparedCodefenceRenderers` when the same language registry is
+rendered repeatedly, and `PreparedAnsiTheme` with `mdToAnsiWithTheme` when the
+same custom terminal theme is reused. These handles also own Wasm resources and
+must be freed after their last use.
+
 ### Attribute options
 
 The bridge supports `headerAttributes`, `fencedCodeAttributes`,
@@ -167,12 +198,20 @@ const highlighter = new SyntaxHighlighter(
   },
 );
 
-const first = mdToHtmlWithPlugins(markdown, options, highlighter);
-const second = mdToHtmlWithPlugins(otherMarkdown, options, highlighter);
+try {
+  const first = mdToHtmlWithPlugins(markdown, options, highlighter);
+  const second = mdToHtmlWithPlugins(otherMarkdown, options, highlighter);
+} finally {
+  highlighter.free();
+  shiki.dispose();
+}
 ```
 
-The playground uses Shiki's fine-grained core, language, and theme imports to
-avoid bundling the complete catalog.
+Adapters retain JavaScript callbacks in Wasm. Call `free()` after the last use,
+or use `Symbol.dispose` in runtimes that support explicit resource management.
+
+The playground loads its Shiki renderer only when syntax highlighting is
+enabled, so highlighting code is absent from the initial JavaScript path.
 
 ### Heading adapter
 
@@ -184,7 +223,11 @@ const headings = new HeadingAdapter(
   (heading) => `</h${heading.level}>`,
 );
 
-const html = mdToHtmlWithPlugins(markdown, options, null, headings);
+try {
+  const html = mdToHtmlWithPlugins(markdown, options, null, headings);
+} finally {
+  headings.free();
+}
 ```
 
 ### Code-fence renderers
@@ -198,6 +241,29 @@ const html = mdToHtmlWithCodefenceRenderers(markdown, options, {
   mermaid: (_lang, _meta, code) =>
     `<div class="mermaid">${escapeHtml(code)}</div>`,
 });
+```
+
+For repeated renders, validate the registry once and use it with prepared
+options.
+
+```typescript
+import { PreparedCodefenceRenderers, PreparedOptions } from "comrak-wasm";
+
+const optionsHandle = new PreparedOptions(options);
+const renderers = new PreparedCodefenceRenderers({
+  mermaid: (_lang, _meta, code) =>
+    `<div class="mermaid">${escapeHtml(code)}</div>`,
+});
+
+try {
+  const html = optionsHandle.mdToHtmlWithCodefenceRenderers(
+    markdown,
+    renderers,
+  );
+} finally {
+  renderers.free();
+  optionsHandle.free();
+}
 ```
 
 ### URL rewriters
@@ -251,10 +317,20 @@ const light = ansiThemeLight();
 const detected = ansiThemeAuto(process.env.COLORFGBG);
 ```
 
+For repeated custom-theme rendering, construct `PreparedAnsiTheme` once and
+pass it to `mdToAnsiWithTheme` or `PreparedOptions.mdToAnsiWithTheme`.
+
 Text and ANSI rendering include box-drawing tables, alerts, blockquote borders,
 lists, footnotes, configurable table shadows, and optional Markdown markers.
 Terminal-width calculation handles wide Unicode characters, combining marks,
-CSI styling, and OSC hyperlinks.
+emoji sequences, CSI styling, and OSC hyperlinks. ANSI rendering strips
+terminal control characters supplied by Markdown content and URLs; custom
+theme values remain trusted because they intentionally contain ANSI escapes.
+
+`tableShadow` accepts `""` to disable the shadow or one non-control Unicode
+scalar value. Decorative table column widths are capped at 256 terminal cells
+to bound padding amplification. Cell content is never truncated; an unusually
+wide cell can overflow its decorative border.
 
 ## Extract Frontmatter
 
@@ -311,7 +387,8 @@ pnpm dev
 
 Vite prints the local URL. The command does not launch a browser. The playground
 supports every output format, explicit Shiki languages and themes, KaTeX, and
-light and dark modes. Its standalone
+light and dark modes. Shiki and KaTeX are disabled initially and loaded on
+demand. Its standalone
 [`sample.md`](examples/playground/sample.md) fixture exercises every compatible
 extension and parser feature. Toolbar modes cover the mutually exclusive
 wikilink orders and raw HTML omit, escape, and trusted behavior.
@@ -345,12 +422,13 @@ also includes the Shiki example, so one root install prepares all packages.
 
 - Rust with the `wasm32-unknown-unknown` target
 - `wasm-bindgen-cli` matching the resolved Rust crate
+- Binaryen's `wasm-opt`
 - Node.js 22 or newer
 - pnpm 11
 
 See the
-[performance and architecture audit](docs/audit-2026-07-12.md) for measurements,
-completed fixes, and remaining opportunities.
+[latest clean-code and performance audit](docs/audit-2026-07-14.md) for
+measurements, completed fixes, and remaining opportunities.
 
 ## License
 

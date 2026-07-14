@@ -66,18 +66,25 @@ curl -s https://api.example.com | jq '.data'
 > This example uses Shiki for syntax highlighting with comrak-wasm.
 `;
 
-const html = mdToHtmlWithPlugins(
-	markdown,
-	{
-		extension: { headerIds: "", alerts: true },
-		render: { unsafe: true },
-	},
-	createShikiAdapter(SyntaxHighlighter, shiki, {
-		name: "github-dark",
-		bg: "#24292e",
-		fg: "#e1e4e8",
-	}),
-);
+const adapter = createShikiAdapter(SyntaxHighlighter, shiki, {
+	name: "github-dark",
+	bg: "#24292e",
+	fg: "#e1e4e8",
+});
+let html: string;
+try {
+	html = mdToHtmlWithPlugins(
+		markdown,
+		{
+			extension: { headerIdPrefix: "", alerts: true },
+			render: { unsafe: true },
+		},
+		adapter,
+	);
+} finally {
+	adapter.free();
+	shiki.dispose();
+}
 
 // --- Output ---
 

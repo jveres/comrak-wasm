@@ -30,7 +30,7 @@
 	},
 	"homepage": "https://github.com/jveres/comrak-wasm",
 	"scripts": {
-		"build": "cargo build --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-name comrak --out-dir pkg target/wasm32-unknown-unknown/release/comrak_wasm.wasm && mv pkg/comrak_bg.wasm pkg/comrak.wasm && mv pkg/comrak_bg.wasm.d.ts pkg/comrak.wasm.d.ts && perl -i -pe 's/comrak_bg\\.wasm/comrak.wasm/g' pkg/comrak.js pkg/comrak.d.ts pkg/comrak.wasm.d.ts",
+		"build": "cargo build --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-name comrak --out-dir pkg target/wasm32-unknown-unknown/release/comrak_wasm.wasm && mv pkg/comrak_bg.wasm pkg/comrak.wasm && wasm-opt -Oz pkg/comrak.wasm -o pkg/comrak.opt.wasm && mv pkg/comrak.opt.wasm pkg/comrak.wasm && mv pkg/comrak_bg.wasm.d.ts pkg/comrak.wasm.d.ts && perl -i -pe 's/comrak_bg\\.wasm/comrak.wasm/g' pkg/comrak.js pkg/comrak.d.ts pkg/comrak.wasm.d.ts",
 		"build:playground": "vite build examples/playground",
 		"check": "pnpm run check:js && pnpm run typecheck && pnpm run check:rust",
 		"check:fix": "biome check --write .",

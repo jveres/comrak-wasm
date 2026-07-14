@@ -11,10 +11,6 @@ import {
 } from "comrak-wasm";
 import { comrakExtensions } from "./shared/options.js";
 
-const require = createRequire(import.meta.url);
-const wasmPath = require.resolve("../pkg/comrak.wasm");
-initSync({ module: await readFile(wasmPath) });
-
 const args = process.argv.slice(2);
 let format = "ansi";
 let theme = "dark";
@@ -79,18 +75,21 @@ try {
 	process.exit(1);
 }
 
+const require = createRequire(import.meta.url);
+const wasmPath = require.resolve("../pkg/comrak.wasm");
+initSync({ module: await readFile(wasmPath) });
+
 const opts = {
 	extension: comrakExtensions,
 };
 
-const shadow = noShadow ? undefined : "░";
+const shadow = noShadow ? "" : "░";
 
 if (format === "text") {
 	console.log(mdToText(md, opts, true, showMarkdown, shadow));
 } else {
 	const base = theme === "light" ? ansiThemeLight() : ansiThemeDark();
 	base.showMarkdown = showMarkdown;
-	if (shadow === undefined) delete base.tableShadow;
-	else base.tableShadow = shadow;
+	base.tableShadow = shadow;
 	console.log(mdToAnsi(md, opts, base));
 }

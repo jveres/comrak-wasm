@@ -14,6 +14,41 @@ export class HeadingAdapter {
     constructor(enter: Function, exit: Function);
 }
 
+/**
+ * ANSI theme prepared once for repeated renders without repeated JavaScript
+ * deserialization, string allocation, or default merging.
+ */
+export class PreparedAnsiTheme {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(theme?: any | null);
+}
+
+export class PreparedCodefenceRenderers {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(renderers: any);
+}
+
+/**
+ * Options prepared once for repeated renders without repeated JS
+ * deserialization and comrak option mapping.
+ */
+export class PreparedOptions {
+    free(): void;
+    [Symbol.dispose](): void;
+    __mdToHtmlWithCodefenceRenderersOwned(md: string, renderers: PreparedCodefenceRenderers, syntax_highlighter?: SyntaxHighlighter | null, heading_adapter?: HeadingAdapter | null): string;
+    __mdToHtmlWithPluginsOwned(md: string, syntax_highlighter?: SyntaxHighlighter | null, heading_adapter?: HeadingAdapter | null): string;
+    getFrontmatter(md: string): string | undefined;
+    mdToAnsi(md: string, theme: any): string;
+    mdToAnsiWithTheme(md: string, theme: PreparedAnsiTheme): string;
+    mdToCommonmark(md: string): string;
+    mdToHtml(md: string): string;
+    mdToText(md: string, show_urls?: boolean | null, show_markdown?: boolean | null, table_shadow?: string | null): string;
+    mdToXml(md: string): string;
+    constructor(options?: any | null);
+}
+
 export class SyntaxHighlighter {
     free(): void;
     [Symbol.dispose](): void;
@@ -48,6 +83,8 @@ export function healMarkdown(md: string): string;
 
 export function mdToAnsi(md: string, options: any, theme: any): string;
 
+export function mdToAnsiWithTheme(md: string, options: any, theme: PreparedAnsiTheme): string;
+
 export function mdToCommonmark(md: string, options: any): string;
 
 export function mdToHtml(md: string, options: any): string;
@@ -66,6 +103,9 @@ export interface InitOutput {
     readonly __mdToHtmlWithPluginsOwned: (a: number, b: number, c: any, d: number, e: number) => [number, number, number, number];
     readonly __wbg_codefencerenderer_free: (a: number, b: number) => void;
     readonly __wbg_headingadapter_free: (a: number, b: number) => void;
+    readonly __wbg_preparedansitheme_free: (a: number, b: number) => void;
+    readonly __wbg_preparedcodefencerenderers_free: (a: number, b: number) => void;
+    readonly __wbg_preparedoptions_free: (a: number, b: number) => void;
     readonly __wbg_syntaxhighlighter_free: (a: number, b: number) => void;
     readonly ansiThemeAuto: (a: number, b: number) => any;
     readonly ansiThemeDark: () => any;
@@ -78,11 +118,24 @@ export interface InitOutput {
     readonly headingadapter_new: (a: any, b: any) => number;
     readonly healMarkdown: (a: number, b: number) => [number, number];
     readonly mdToAnsi: (a: number, b: number, c: any, d: any) => [number, number, number, number];
+    readonly mdToAnsiWithTheme: (a: number, b: number, c: any, d: number) => [number, number, number, number];
     readonly mdToCommonmark: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToHtml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToHtmlWithRewriters: (a: number, b: number, c: any, d: any, e: any) => [number, number, number, number];
     readonly mdToText: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly mdToXml: (a: number, b: number, c: any) => [number, number, number, number];
+    readonly preparedansitheme_new: (a: number) => [number, number, number];
+    readonly preparedcodefencerenderers_new: (a: any) => [number, number, number];
+    readonly preparedoptions___mdToHtmlWithCodefenceRenderersOwned: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly preparedoptions___mdToHtmlWithPluginsOwned: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly preparedoptions_getFrontmatter: (a: number, b: number, c: number) => [number, number];
+    readonly preparedoptions_mdToAnsi: (a: number, b: number, c: number, d: any) => [number, number, number, number];
+    readonly preparedoptions_mdToAnsiWithTheme: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly preparedoptions_mdToCommonmark: (a: number, b: number, c: number) => [number, number];
+    readonly preparedoptions_mdToHtml: (a: number, b: number, c: number) => [number, number];
+    readonly preparedoptions_mdToText: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+    readonly preparedoptions_mdToXml: (a: number, b: number, c: number) => [number, number];
+    readonly preparedoptions_new: (a: number) => [number, number, number];
     readonly syntaxhighlighter_clone: (a: number) => number;
     readonly syntaxhighlighter_new: (a: any, b: any, c: any) => number;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

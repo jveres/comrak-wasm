@@ -11,6 +11,7 @@ import {
 	healMarkdown,
 	initSync,
 	mdToAnsi,
+	mdToAnsiWithTheme,
 	mdToCommonmark,
 	mdToHtml,
 	mdToHtmlWithCodefenceRenderers,
@@ -19,6 +20,9 @@ import {
 	mdToText,
 	mdToXml,
 	mdToXmlWithPlugins,
+	PreparedAnsiTheme,
+	PreparedCodefenceRenderers,
+	PreparedOptions,
 	SyntaxHighlighter,
 } from "comrak-wasm";
 import fc from "fast-check";
@@ -245,6 +249,116 @@ describe("html", () => {
 
 		expect(() => renderWithUncheckedOptions("hello", { render })).toThrow(
 			/invalid comrak options/,
+		);
+	});
+});
+
+describe("prepared options", () => {
+	test("reuses one validated option set across stock renderers", () => {
+		const prepared = new PreparedOptions({
+			extension: {
+				frontMatterDelimiter: "---",
+				strikethrough: true,
+				table: true,
+			},
+		});
+
+		try {
+			expect(prepared.mdToHtml("~~done~~")).toContain("<del>done</del>");
+			expect(prepared.mdToCommonmark("# Title")).toBe("# Title\n");
+			expect(prepared.mdToXml("# Title")).toContain('<heading level="1"');
+			expect(prepared.mdToText("# Title")).toBe("Title");
+			expect(prepared.mdToAnsi("# Title")).toContain("Title");
+			expect(prepared.getFrontmatter("---\ntitle: Ready\n---\nBody")).toBe(
+				"title: Ready",
+			);
+		} finally {
+			prepared.free();
+		}
+	});
+
+	test("rejects malformed options at construction", () => {
+		const PreparedOptionsUnchecked = PreparedOptions as unknown as new (
+			options: unknown,
+		) => PreparedOptions;
+
+		expect(
+			() => new PreparedOptionsUnchecked({ render: { width: -1 } }),
+		).toThrow(/invalid comrak options/);
+	});
+
+	test("reuses options with reusable plugin adapters", () => {
+		const prepared = new PreparedOptions({ render: { unsafe: true } });
+		const highlighter = new SyntaxHighlighter(
+			(code, language) => `<mark data-language="${language}">${code}</mark>`,
+			() => "<pre>",
+			() => "<code>",
+		);
+
+		try {
+			const first = prepared.mdToHtmlWithPlugins(
+				"```js\none\n```",
+				highlighter,
+			);
+			const second = prepared.mdToHtmlWithPlugins(
+				"```rust\ntwo\n```",
+				highlighter,
+			);
+			expect(first).toContain('data-language="js"');
+			expect(second).toContain('data-language="rust"');
+		} finally {
+			highlighter.free();
+			prepared.free();
+		}
+	});
+
+	test("reuses validated code-fence renderer registrations", () => {
+		const prepared = new PreparedOptions({ render: { unsafe: true } });
+		const renderers = new PreparedCodefenceRenderers({
+			mermaid: (_language, _meta, code) => `<figure>${code}</figure>`,
+		});
+
+		try {
+			expect(
+				prepared.mdToHtmlWithCodefenceRenderers(
+					"```mermaid\ngraph TD\n```",
+					renderers,
+				),
+			).toContain("<figure>graph TD\n</figure>");
+		} finally {
+			renderers.free();
+			prepared.free();
+		}
+	});
+
+	test("reuses a validated and merged ANSI theme", () => {
+		const options = { extension: { table: true } };
+		const themeOptions = { ...ansiThemeDark(), showMarkdown: true };
+		const theme = new PreparedAnsiTheme(themeOptions);
+		const prepared = new PreparedOptions(options);
+
+		try {
+			const markdown = "# Ready";
+			const expected = mdToAnsi(markdown, options, themeOptions);
+			expect(mdToAnsiWithTheme(markdown, options, theme)).toBe(expected);
+			expect(prepared.mdToAnsiWithTheme(markdown, theme)).toBe(expected);
+		} finally {
+			theme.free();
+			prepared.free();
+		}
+	});
+
+	test("rejects malformed prepared renderer and theme registrations", () => {
+		const PreparedRenderersUnchecked =
+			PreparedCodefenceRenderers as unknown as new (
+				renderers: unknown,
+			) => PreparedCodefenceRenderers;
+
+		expect(
+			() => new PreparedRenderersUnchecked({ rust: "not a function" }),
+		).toThrow('codefence renderer for "rust" must be a Function');
+		expect(() => new PreparedAnsiTheme({ tableShadow: "too long" })).toThrow(
+			"tableShadow must be empty or one non-control Unicode scalar value",
 		);
 	});
 });
@@ -528,7 +642,7 @@ describe("commonmark", () => {
 describe("syntax highlighter", () => {
 	test("highlight callback invoked", () => {
 		const sh = new SyntaxHighlighter(
-			(code: string, lang: string | undefined) =>
+			(code: string, lang: string) =>
 				`<span class="hl" data-lang="${lang ?? ""}">${code}</span>`,
 			() => "<pre>",
 			() => "<code>",
@@ -560,7 +674,7 @@ describe("syntax highlighter", () => {
 
 	test("empty pre/code for highlighters that provide their own", () => {
 		const sh = new SyntaxHighlighter(
-			(code: string, lang: string | undefined) =>
+			(code: string, lang: string) =>
 				`<pre class="shiki"><code class="lang-${lang}">${code}</code></pre>`,
 			() => "",
 			() => "",
@@ -574,10 +688,10 @@ describe("syntax highlighter", () => {
 		expect(html).toContain('class="lang-rust"');
 	});
 
-	test("lang is undefined for unspecified language", () => {
+	test("lang is empty for an unspecified language", () => {
 		let receivedLang: unknown = "not-called";
 		const sh = new SyntaxHighlighter(
-			(code: string, lang: string | undefined) => {
+			(code: string, lang: string) => {
 				receivedLang = lang;
 				return code;
 			},
@@ -926,6 +1040,21 @@ describe("codefence renderer", () => {
 			),
 		).toBe('<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n');
 	});
+
+	test("rejects malformed renderer registrations", () => {
+		const renderUnchecked = mdToHtmlWithCodefenceRenderers as unknown as (
+			markdown: string,
+			options: unknown,
+			renderers: unknown,
+		) => string;
+
+		expect(() => renderUnchecked("```js\ncode\n```", {}, 42)).toThrow(
+			/codefence renderers must be an object/,
+		);
+		expect(() =>
+			renderUnchecked("```js\ncode\n```", {}, { js: "not a function" }),
+		).toThrow(/codefence renderer for "js" must be a Function/);
+	});
 });
 
 // --- URL Rewriter ---
@@ -986,11 +1115,50 @@ describe("url rewriter", () => {
 		expect(html).toContain('src="https://example.com/image.png"');
 		expect(html).toContain('href="https://example.com"');
 	});
+
+	test("rejects malformed URL rewriters", () => {
+		const renderUnchecked = mdToHtmlWithRewriters as unknown as (
+			markdown: string,
+			options: unknown,
+			imageRewriter: unknown,
+			linkRewriter: unknown,
+		) => string;
+
+		expect(() => renderUnchecked("![alt](image.png)", {}, 42, null)).toThrow(
+			/image URL rewriter must be a Function/,
+		);
+		expect(() => renderUnchecked("[link](url)", {}, null, {})).toThrow(
+			/link URL rewriter must be a Function/,
+		);
+	});
 });
 
 // --- Text Output ---
 
 describe("text", () => {
+	test("rejects table shadows that are not one safe character", () => {
+		expect(() =>
+			mdToText("| a |\n|---|\n| b |", {}, false, false, "ab"),
+		).toThrowError(
+			"tableShadow must be empty or one non-control Unicode scalar value",
+		);
+	});
+
+	test("bounds padding for highly skewed tables without truncating content", () => {
+		const wide = "x".repeat(1_024);
+		const rows = Array.from({ length: 1_024 }, () => "| a |").join("\n");
+		const text = mdToText(
+			`| ${wide} |\n|---|\n${rows}`,
+			{ extension: { table: true } },
+			false,
+			false,
+			"",
+		);
+
+		expect(text).toContain(wide);
+		expect(text.length).toBeLessThan(400_000);
+	});
+
 	// --- Headings (showMarkdown=false by default) ---
 	test("H1 no # prefix by default", () => {
 		expect(mdToText("# Title", {})).toBe("Title");
@@ -1157,6 +1325,46 @@ describe("text", () => {
 └──────┴─────┘`);
 	});
 
+	test("table columns count emoji sequences as two terminal cells", () => {
+		const markdown = "| a | b |\n|---|---|\n| 👩‍💻 | 👨‍👩‍👧‍👦 |\n| 🇭🇺 | ❤️ |";
+		const [topBorder] = mdToText(
+			markdown,
+			{ extension: { table: true } },
+			false,
+			false,
+			"",
+		).split("\n");
+
+		expect(topBorder).toBe("┌─────┬─────┐");
+	});
+
+	test("preserves literal escaped-tag containers", () => {
+		expect(
+			mdToText("~~foo~~ and |bar|", {
+				extension: { spoiler: true, subscript: true },
+			}),
+		).toBe("~~foo~~ and |bar|");
+	});
+
+	test.each([
+		{
+			markdown: "[[/guides/comrak|Comrak guide]]",
+			options: { wikilinksTitleAfterPipe: true },
+		},
+		{
+			markdown: "[[Comrak guide|/guides/comrak]]",
+			options: { wikilinksTitleBeforePipe: true },
+		},
+	])("preserves wikilink titles for both pipe orders", ({
+		markdown,
+		options,
+	}) => {
+		expect(mdToText(markdown, { extension: options })).toBe("Comrak guide");
+		expect(mdToText(markdown, { extension: options }, true)).toBe(
+			"Comrak guide (/guides/comrak)",
+		);
+	});
+
 	// --- Links ---
 	test("links hide URLs by default", () => {
 		expect(mdToText("[click](https://example.com)", {})).toBe("click");
@@ -1177,6 +1385,26 @@ describe("text", () => {
 // --- ANSI Output (structural tests only, no color assertions) ---
 
 describe("ansi", () => {
+	test("rejects table shadows that are not one safe character", () => {
+		expect(() =>
+			mdToAnsi(
+				"| a |\n|---|\n| b |",
+				{ extension: { table: true } },
+				{
+					tableShadow: "\x1b",
+				},
+			),
+		).toThrowError(
+			"tableShadow must be empty or one non-control Unicode scalar value",
+		);
+	});
+
+	test("strips terminal control sequences from Markdown literals", () => {
+		expect(mdToAnsi("safe\x1b]52;c;SGVsbG8=\x07tail\u009b31m", {})).toBe(
+			"safe]52;c;SGVsbG8=tail31m",
+		);
+	});
+
 	// --- Headings (showMarkdown=false by default) ---
 	test("H1 no # prefix by default", () => {
 		expect(mdToAnsi("# Heading", {})).not.toContain("# ");
@@ -1405,6 +1633,18 @@ describe("heal", () => {
 		);
 	});
 
+	test("property: exposed HTML suffixes reach a fixed point in one call", () => {
+		fc.assert(
+			fc.property(fc.integer({ min: 1, max: 64 }), (tagCount) => {
+				const healed = healMarkdown(`start${"<a".repeat(tagCount)}`);
+
+				expect(healed).toBe("start");
+				expect(healMarkdown(healed)).toBe(healed);
+			}),
+			{ numRuns: 100, seed: 71_420_026 },
+		);
+	});
+
 	test("closes unclosed bold", () => {
 		expect(healMarkdown("**bold")).toBe("**bold**");
 	});
@@ -1539,6 +1779,13 @@ describe("frontmatter", () => {
 	test("extracts YAML frontmatter", () => {
 		const md = "---\ntitle: Hello\ndate: 2026-01-01\n---\n\n# Content";
 		expect(getFrontmatter(md, opts)).toBe("title: Hello\ndate: 2026-01-01");
+	});
+
+	test("extracts CRLF frontmatter without leaking carriage returns", () => {
+		const md =
+			"---\r\ntitle: Hello\r\ndate: 2026-01-01\r\n---\r\n\r\n# Content";
+
+		expect(getFrontmatter(md, opts)).toBe("title: Hello\r\ndate: 2026-01-01");
 	});
 
 	test("returns undefined when no frontmatter", () => {
