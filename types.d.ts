@@ -245,6 +245,21 @@ export function mdToHtmlWithRewriters(
 	linkUrlRewriter?: UrlRewriter | null,
 ): string;
 
+/**
+ * The COMBINED entry: URL rewriters (security guards) together with the
+ * render plugins — highlighter, heading adapter, per-language codefence
+ * renderers.
+ */
+export function mdToHtmlWithRewritersAndPlugins(
+	md: string,
+	options?: ComrakOptions | null,
+	imageUrlRewriter?: UrlRewriter | null,
+	linkUrlRewriter?: UrlRewriter | null,
+	syntaxHighlighter?: SyntaxHighlighter | null,
+	headingAdapter?: HeadingAdapter | null,
+	renderers?: CodefenceRenderers | null,
+): string;
+
 export function mdToText(
 	md: string,
 	options?: ComrakOptions | null,

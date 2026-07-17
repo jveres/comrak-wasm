@@ -1,6 +1,7 @@
 import initialize, {
 	__mdToHtmlWithCodefenceRenderersOwned,
 	__mdToHtmlWithPluginsOwned,
+	__mdToHtmlWithRewritersAndPluginsOwned,
 	PreparedOptions as GeneratedPreparedOptions,
 	initSync as initializeSync,
 	mdToXml as renderXml,
@@ -189,5 +190,39 @@ export function mdToHtmlWithCodefenceRenderers(
 		renderers,
 		cloneAdapter(syntaxHighlighter),
 		cloneAdapter(headingAdapter),
+	);
+}
+
+/**
+ * The COMBINED entry: URL rewriters (security guards) together with
+ * the render plugins — highlighter, heading adapter, per-language
+ * codefence renderers. The disjoint entries forced hosts to choose.
+ *
+ * @param {string} markdown
+ * @param {ComrakOptionsInput | null | undefined} options
+ * @param {((url: string) => string) | null | undefined} imageUrlRewriter
+ * @param {((url: string) => string) | null | undefined} linkUrlRewriter
+ * @param {SyntaxHighlighterHandle | null | undefined} syntaxHighlighter
+ * @param {HeadingAdapterHandle | null | undefined} headingAdapter
+ * @param {CodefenceRendererMap | null | undefined} renderers
+ * @returns {string}
+ */
+export function mdToHtmlWithRewritersAndPlugins(
+	markdown,
+	options,
+	imageUrlRewriter,
+	linkUrlRewriter,
+	syntaxHighlighter,
+	headingAdapter,
+	renderers,
+) {
+	return __mdToHtmlWithRewritersAndPluginsOwned(
+		markdown,
+		options,
+		imageUrlRewriter,
+		linkUrlRewriter,
+		cloneAdapter(syntaxHighlighter),
+		cloneAdapter(headingAdapter),
+		renderers,
 	);
 }

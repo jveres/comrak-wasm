@@ -401,6 +401,47 @@ pub fn md_to_html_with_rewriters(
     Ok(crate::render_html(md, &options))
 }
 
+/// The COMBINED entry: URL rewriters (a host's security guards ride
+/// them on every render) together with the render plugins (syntax
+/// highlighter, heading adapter, per-language codefence renderers).
+/// The disjoint entries forced hosts to choose between guarding URLs
+/// and highlighting code.
+#[wasm_bindgen(js_name = __mdToHtmlWithRewritersAndPluginsOwned)]
+#[allow(clippy::too_many_arguments)]
+pub fn md_to_html_with_rewriters_and_plugins(
+    md: &str,
+    options: JsValue,
+    image_url_rewriter: JsValue,
+    link_url_rewriter: JsValue,
+    syntax_highlighter: Option<SyntaxHighlighter>,
+    heading_adapter: Option<HeadingAdapter>,
+    renderers: JsValue,
+) -> Result<String, JsValue> {
+    let mut options = crate::options::from_js(Some(options))?;
+
+    if let Some(function) = optional_function(image_url_rewriter, "image URL rewriter")? {
+        options.extension.image_url_rewriter = Some(Arc::new(JsUrlRewriter {
+            rewrite_fn: function,
+        }));
+    }
+    if let Some(function) = optional_function(link_url_rewriter, "link URL rewriter")? {
+        options.extension.link_url_rewriter = Some(Arc::new(JsUrlRewriter {
+            rewrite_fn: function,
+        }));
+    }
+
+    let prepared_renderers = PreparedCodefenceRenderers {
+        renderers: parse_codefence_renderers(renderers)?,
+    };
+    Ok(render_html_with_codefence_renderers(
+        md,
+        &options,
+        &prepared_renderers,
+        syntax_highlighter.as_ref(),
+        heading_adapter.as_ref(),
+    ))
+}
+
 fn optional_function(value: JsValue, name: &str) -> Result<Option<Function>, JsValue> {
     if value.is_null() || value.is_undefined() {
         return Ok(None);

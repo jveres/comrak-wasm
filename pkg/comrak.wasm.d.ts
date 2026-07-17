@@ -3,6 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const __mdToHtmlWithCodefenceRenderersOwned: (a: number, b: number, c: any, d: any, e: number, f: number) => [number, number, number, number];
 export const __mdToHtmlWithPluginsOwned: (a: number, b: number, c: any, d: number, e: number) => [number, number, number, number];
+export const __mdToHtmlWithRewritersAndPluginsOwned: (a: number, b: number, c: any, d: any, e: any, f: number, g: number, h: any) => [number, number, number, number];
 export const __wbg_codefencerenderer_free: (a: number, b: number) => void;
 export const __wbg_headingadapter_free: (a: number, b: number) => void;
 export const __wbg_preparedansitheme_free: (a: number, b: number) => void;

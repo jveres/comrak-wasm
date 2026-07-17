@@ -473,6 +473,52 @@ export function __mdToHtmlWithPluginsOwned(md, options, syntax_highlighter, head
 }
 
 /**
+ * The COMBINED entry: URL rewriters (a host's security guards ride
+ * them on every render) together with the render plugins (syntax
+ * highlighter, heading adapter, per-language codefence renderers).
+ * The disjoint entries forced hosts to choose between guarding URLs
+ * and highlighting code.
+ * @param {string} md
+ * @param {any} options
+ * @param {any} image_url_rewriter
+ * @param {any} link_url_rewriter
+ * @param {SyntaxHighlighter | null | undefined} syntax_highlighter
+ * @param {HeadingAdapter | null | undefined} heading_adapter
+ * @param {any} renderers
+ * @returns {string}
+ */
+export function __mdToHtmlWithRewritersAndPluginsOwned(md, options, image_url_rewriter, link_url_rewriter, syntax_highlighter, heading_adapter, renderers) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        let ptr1 = 0;
+        if (!isLikeNone(syntax_highlighter)) {
+            _assertClass(syntax_highlighter, SyntaxHighlighter);
+            ptr1 = syntax_highlighter.__destroy_into_raw();
+        }
+        let ptr2 = 0;
+        if (!isLikeNone(heading_adapter)) {
+            _assertClass(heading_adapter, HeadingAdapter);
+            ptr2 = heading_adapter.__destroy_into_raw();
+        }
+        const ret = wasm.__mdToHtmlWithRewritersAndPluginsOwned(ptr0, len0, options, image_url_rewriter, link_url_rewriter, ptr1, ptr2, renderers);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
  * Auto-select dark or light theme based on COLORFGBG value.
  * @param {string | null} [colorfgbg]
  * @returns {any}

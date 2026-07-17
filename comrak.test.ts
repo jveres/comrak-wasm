@@ -17,6 +17,7 @@ import {
 	mdToHtmlWithCodefenceRenderers,
 	mdToHtmlWithPlugins,
 	mdToHtmlWithRewriters,
+	mdToHtmlWithRewritersAndPlugins,
 	mdToText,
 	mdToXml,
 	mdToXmlWithPlugins,
@@ -1129,6 +1130,67 @@ describe("url rewriter", () => {
 		);
 		expect(() => renderUnchecked("[link](url)", {}, null, {})).toThrow(
 			/link URL rewriter must be a Function/,
+		);
+	});
+});
+
+describe("rewriters and plugins combined", () => {
+	const source =
+		"![img](http://img.com/a.png)\n\n[link](http://link.com)\n\n```js\ncode\n```\n\n```mermaid\ngraph TD\n```";
+
+	test("rewriters, highlighter and codefence renderers compose in one render", () => {
+		const sh = new SyntaxHighlighter(
+			(code: string, lang: string) =>
+				`<span class="hl" data-lang="${lang ?? ""}">${code}</span>`,
+			() => "<pre>",
+			() => "<code>",
+		);
+		const html = mdToHtmlWithRewritersAndPlugins(
+			source,
+			{ render: { unsafe: true } },
+			(url: string) => `https://img-proxy/${url}`,
+			(url: string) => `https://link-proxy/${url}`,
+			sh,
+			null,
+			{
+				mermaid: (lang: string, _meta: string, code: string) =>
+					`<div class="diagram" data-lang="${lang}">${code.trim()}</div>`,
+			},
+		);
+		expect(html).toContain("https://img-proxy/http://img.com/a.png");
+		expect(html).toContain("https://link-proxy/http://link.com");
+		expect(html).toContain('class="hl"');
+		expect(html).toContain('data-lang="js"');
+		expect(html).toContain(
+			'<div class="diagram" data-lang="mermaid">graph TD</div>',
+		);
+	});
+
+	test("all-null extras render like the plain rewriter entry", () => {
+		expect(
+			mdToHtmlWithRewritersAndPlugins(
+				source,
+				{ render: { unsafe: true } },
+				null,
+				null,
+				null,
+				null,
+				null,
+			),
+		).toBe(
+			mdToHtmlWithRewriters(source, { render: { unsafe: true } }, null, null),
+		);
+	});
+
+	test("rejects malformed URL rewriters like the plain entry", () => {
+		const renderUnchecked = mdToHtmlWithRewritersAndPlugins as unknown as (
+			markdown: string,
+			options: unknown,
+			imageRewriter: unknown,
+			linkRewriter: unknown,
+		) => string;
+		expect(() => renderUnchecked("![alt](image.png)", {}, 42, null)).toThrow(
+			/image URL rewriter must be a Function/,
 		);
 	});
 });

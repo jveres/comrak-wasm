@@ -61,6 +61,15 @@ export function __mdToHtmlWithCodefenceRenderersOwned(md: string, options: any, 
 export function __mdToHtmlWithPluginsOwned(md: string, options: any, syntax_highlighter?: SyntaxHighlighter | null, heading_adapter?: HeadingAdapter | null): string;
 
 /**
+ * The COMBINED entry: URL rewriters (a host's security guards ride
+ * them on every render) together with the render plugins (syntax
+ * highlighter, heading adapter, per-language codefence renderers).
+ * The disjoint entries forced hosts to choose between guarding URLs
+ * and highlighting code.
+ */
+export function __mdToHtmlWithRewritersAndPluginsOwned(md: string, options: any, image_url_rewriter: any, link_url_rewriter: any, syntax_highlighter: SyntaxHighlighter | null | undefined, heading_adapter: HeadingAdapter | null | undefined, renderers: any): string;
+
+/**
  * Auto-select dark or light theme based on COLORFGBG value.
  */
 export function ansiThemeAuto(colorfgbg?: string | null): any;
@@ -101,6 +110,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __mdToHtmlWithCodefenceRenderersOwned: (a: number, b: number, c: any, d: any, e: number, f: number) => [number, number, number, number];
     readonly __mdToHtmlWithPluginsOwned: (a: number, b: number, c: any, d: number, e: number) => [number, number, number, number];
+    readonly __mdToHtmlWithRewritersAndPluginsOwned: (a: number, b: number, c: any, d: any, e: any, f: number, g: number, h: any) => [number, number, number, number];
     readonly __wbg_codefencerenderer_free: (a: number, b: number) => void;
     readonly __wbg_headingadapter_free: (a: number, b: number) => void;
     readonly __wbg_preparedansitheme_free: (a: number, b: number) => void;
