@@ -378,15 +378,13 @@ impl comrak::options::URLRewriter for JsUrlRewriter {
     }
 }
 
-#[wasm_bindgen(js_name = mdToHtmlWithRewriters)]
-pub fn md_to_html_with_rewriters(
-    md: &str,
-    options: JsValue,
+/// Attach the JS URL rewriters to parsed options — ONE wiring for
+/// every rewriter-capable entry.
+fn install_url_rewriters(
+    options: &mut comrak::Options,
     image_url_rewriter: JsValue,
     link_url_rewriter: JsValue,
-) -> Result<String, JsValue> {
-    let mut options = crate::options::from_js(Some(options))?;
-
+) -> Result<(), JsValue> {
     if let Some(function) = optional_function(image_url_rewriter, "image URL rewriter")? {
         options.extension.image_url_rewriter = Some(Arc::new(JsUrlRewriter {
             rewrite_fn: function,
@@ -397,7 +395,18 @@ pub fn md_to_html_with_rewriters(
             rewrite_fn: function,
         }));
     }
+    Ok(())
+}
 
+#[wasm_bindgen(js_name = mdToHtmlWithRewriters)]
+pub fn md_to_html_with_rewriters(
+    md: &str,
+    options: JsValue,
+    image_url_rewriter: JsValue,
+    link_url_rewriter: JsValue,
+) -> Result<String, JsValue> {
+    let mut options = crate::options::from_js(Some(options))?;
+    install_url_rewriters(&mut options, image_url_rewriter, link_url_rewriter)?;
     Ok(crate::render_html(md, &options))
 }
 
@@ -406,6 +415,9 @@ pub fn md_to_html_with_rewriters(
 /// highlighter, heading adapter, per-language codefence renderers).
 /// The disjoint entries forced hosts to choose between guarding URLs
 /// and highlighting code.
+// Owned + index.js cloneAdapter, the house convention — wasm-bindgen
+// has no Option<&T> for exported classes (OptionFromWasmAbi), so
+// borrowed optional plugin refs cannot cross the boundary.
 #[wasm_bindgen(js_name = __mdToHtmlWithRewritersAndPluginsOwned)]
 #[allow(clippy::too_many_arguments)]
 pub fn md_to_html_with_rewriters_and_plugins(
@@ -418,17 +430,7 @@ pub fn md_to_html_with_rewriters_and_plugins(
     renderers: JsValue,
 ) -> Result<String, JsValue> {
     let mut options = crate::options::from_js(Some(options))?;
-
-    if let Some(function) = optional_function(image_url_rewriter, "image URL rewriter")? {
-        options.extension.image_url_rewriter = Some(Arc::new(JsUrlRewriter {
-            rewrite_fn: function,
-        }));
-    }
-    if let Some(function) = optional_function(link_url_rewriter, "link URL rewriter")? {
-        options.extension.link_url_rewriter = Some(Arc::new(JsUrlRewriter {
-            rewrite_fn: function,
-        }));
-    }
+    install_url_rewriters(&mut options, image_url_rewriter, link_url_rewriter)?;
 
     let prepared_renderers = PreparedCodefenceRenderers {
         renderers: parse_codefence_renderers(renderers)?,
