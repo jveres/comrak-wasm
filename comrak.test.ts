@@ -741,15 +741,16 @@ describe("syntax highlighter", () => {
 		expect(second).toContain("<mark>two\n</mark>");
 	});
 
-	test.each(
-		invalidStringCallbacks,
-	)("falls back safely when every callback $description", ({ callback }) => {
-		const highlighter = new SyntaxHighlighter(callback, callback, callback);
+	test.each(invalidStringCallbacks)(
+		"falls back safely when every callback $description",
+		({ callback }) => {
+			const highlighter = new SyntaxHighlighter(callback, callback, callback);
 
-		expect(mdToHtmlWithPlugins("```js\n<tag>\n```", {}, highlighter)).toBe(
-			'<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n',
-		);
-	});
+			expect(mdToHtmlWithPlugins("```js\n<tag>\n```", {}, highlighter)).toBe(
+				'<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n',
+			);
+		},
+	);
 
 	test("Shiki adapter escapes code when highlighting fails", () => {
 		const failingShiki: ShikiHighlighter = {
@@ -871,15 +872,16 @@ describe("heading adapter", () => {
 		expect(second).toBe('<h2 class="reused">Two</h2>');
 	});
 
-	test.each(
-		invalidStringCallbacks,
-	)("falls back safely when both callbacks $description", ({ callback }) => {
-		const adapter = new HeadingAdapter(callback, callback);
+	test.each(invalidStringCallbacks)(
+		"falls back safely when both callbacks $description",
+		({ callback }) => {
+			const adapter = new HeadingAdapter(callback, callback);
 
-		expect(mdToHtmlWithPlugins("# Hello", {}, null, adapter)).toBe(
-			"<h1>Hello</h1>",
-		);
-	});
+			expect(mdToHtmlWithPlugins("# Hello", {}, null, adapter)).toBe(
+				"<h1>Hello</h1>",
+			);
+		},
+	);
 });
 
 // --- XML ---
@@ -1026,21 +1028,20 @@ describe("codefence renderer", () => {
 		expect(second).toContain("<mark>second\n</mark>");
 	});
 
-	test.each(
-		invalidStringCallbacks,
-	)("falls back safely when the renderer callback $description", ({
-		callback,
-	}) => {
-		expect(
-			mdToHtmlWithCodefenceRenderers(
-				"```js\n<tag>\n```",
-				{},
-				{
-					js: callback,
-				},
-			),
-		).toBe('<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n');
-	});
+	test.each(invalidStringCallbacks)(
+		"falls back safely when the renderer callback $description",
+		({ callback }) => {
+			expect(
+				mdToHtmlWithCodefenceRenderers(
+					"```js\n<tag>\n```",
+					{},
+					{
+						js: callback,
+					},
+				),
+			).toBe('<pre><code class="language-js">&lt;tag&gt;\n</code></pre>\n');
+		},
+	);
 
 	test("rejects malformed renderer registrations", () => {
 		const renderUnchecked = mdToHtmlWithCodefenceRenderers as unknown as (
@@ -1103,19 +1104,20 @@ describe("url rewriter", () => {
 		expect(html).toContain('href="http://example.com"');
 	});
 
-	test.each(
-		invalidStringCallbacks,
-	)("keeps original URLs when callbacks $description", ({ callback }) => {
-		const html = mdToHtmlWithRewriters(
-			"![image](https://example.com/image.png)\n\n[link](https://example.com)",
-			{},
-			callback,
-			callback,
-		);
+	test.each(invalidStringCallbacks)(
+		"keeps original URLs when callbacks $description",
+		({ callback }) => {
+			const html = mdToHtmlWithRewriters(
+				"![image](https://example.com/image.png)\n\n[link](https://example.com)",
+				{},
+				callback,
+				callback,
+			);
 
-		expect(html).toContain('src="https://example.com/image.png"');
-		expect(html).toContain('href="https://example.com"');
-	});
+			expect(html).toContain('src="https://example.com/image.png"');
+			expect(html).toContain('href="https://example.com"');
+		},
+	);
 
 	test("rejects malformed URL rewriters", () => {
 		const renderUnchecked = mdToHtmlWithRewriters as unknown as (
@@ -1417,15 +1419,15 @@ describe("text", () => {
 			markdown: "[[Comrak guide|/guides/comrak]]",
 			options: { wikilinksTitleBeforePipe: true },
 		},
-	])("preserves wikilink titles for both pipe orders", ({
-		markdown,
-		options,
-	}) => {
-		expect(mdToText(markdown, { extension: options })).toBe("Comrak guide");
-		expect(mdToText(markdown, { extension: options }, true)).toBe(
-			"Comrak guide (/guides/comrak)",
-		);
-	});
+	])(
+		"preserves wikilink titles for both pipe orders",
+		({ markdown, options }) => {
+			expect(mdToText(markdown, { extension: options })).toBe("Comrak guide");
+			expect(mdToText(markdown, { extension: options }, true)).toBe(
+				"Comrak guide (/guides/comrak)",
+			);
+		},
+	);
 
 	// --- Links ---
 	test("links hide URLs by default", () => {
@@ -1639,17 +1641,18 @@ describe("walker limits", () => {
 	test.each([
 		{ name: "text", render: (markdown: string) => mdToText(markdown, {}) },
 		{ name: "ANSI", render: (markdown: string) => mdToAnsi(markdown, {}) },
-	])("$name output rejects excessive nesting with a RangeError", ({
-		render,
-	}) => {
-		const markdown = `${"> ".repeat(600)}deep`;
-		const renderDeeplyNestedMarkdown = () => render(markdown);
+	])(
+		"$name output rejects excessive nesting with a RangeError",
+		({ render }) => {
+			const markdown = `${"> ".repeat(600)}deep`;
+			const renderDeeplyNestedMarkdown = () => render(markdown);
 
-		expect(renderDeeplyNestedMarkdown).toThrow(RangeError);
-		expect(renderDeeplyNestedMarkdown).toThrow(
-			"markdown nesting exceeds the text/ANSI limit of 512",
-		);
-	});
+			expect(renderDeeplyNestedMarkdown).toThrow(RangeError);
+			expect(renderDeeplyNestedMarkdown).toThrow(
+				"markdown nesting exceeds the text/ANSI limit of 512",
+			);
+		},
+	);
 });
 
 // --- Heal Markdown ---

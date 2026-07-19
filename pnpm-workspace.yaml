@@ -3,3 +3,4 @@ packages:
 
 minimumReleaseAgeExclude:
   - vite@8.1.2
+  - katex@0.18.1

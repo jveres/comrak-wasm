@@ -46,16 +46,16 @@
 		"md": "node examples/md.mjs"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.3",
+		"@biomejs/biome": "^2.5.4",
 		"@shikijs/langs": "^4.3.1",
 		"@shikijs/themes": "^4.3.1",
 		"@types/node": "^26.1.1",
 		"@vitest/coverage-v8": "^4.1.10",
 		"fast-check": "^4.9.0",
-		"katex": "^0.17.0",
+		"katex": "^0.18.1",
 		"shiki": "^4.3.1",
 		"typescript": "^7.0.2",
-		"vite": "^8.1.4",
+		"vite": "^8.1.5",
 		"vitest": "^4.1.10"
 	}
 }
