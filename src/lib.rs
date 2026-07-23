@@ -245,23 +245,38 @@ fn frontmatter_content<'a>(raw: &'a str, delimiter: &str) -> Option<&'a str> {
     }
 }
 
-fn extract_frontmatter(md: &str, options: &comrak::Options<'_>) -> Option<String> {
-    let arena = Arena::new();
-    let root = parse_document(&arena, md, options);
-    let delimiter = options
-        .extension
-        .front_matter_delimiter
-        .as_deref()
-        .unwrap_or("---");
+/// Port of comrak's private `strings::split_off_front_matter`, returning the
+/// raw front-matter block (delimiters, closing line ending, and the optional
+/// blank line that follows) without parsing the whole document. The closing
+/// line search order and the newline-or-EOF requirement after the closing
+/// delimiter deliberately mirror comrak so both agree on every input.
+fn split_off_frontmatter<'a>(source: &'a str, delimiter: &str) -> Option<&'a str> {
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
+    let body = strip_prefix_line_ending(source.strip_prefix(delimiter)?)?;
+    let body_start = source.len() - body.len();
 
-    root.children().find_map(|child| {
-        let data = child.data.borrow();
-        let comrak::nodes::NodeValue::FrontMatter(raw) = &data.value else {
-            return None;
-        };
-        let content = frontmatter_content(raw, delimiter)?;
-        (!content.is_empty()).then(|| content.to_string())
-    })
+    let close_index = body
+        .find(&format!("\n{delimiter}\r\n"))
+        .or_else(|| body.find(&format!("\n{delimiter}\n")))
+        .or_else(|| body.find(&format!("\n{delimiter}")))?;
+    let mut end = body_start + close_index + 1 + delimiter.len();
+
+    if end == source.len() {
+        return Some(source);
+    }
+    let after_close = strip_prefix_line_ending(&source[end..])?;
+    end = source.len() - after_close.len();
+    if let Some(after_blank) = strip_prefix_line_ending(&source[end..]) {
+        end = source.len() - after_blank.len();
+    }
+    Some(&source[..end])
+}
+
+fn extract_frontmatter(md: &str, options: &comrak::Options<'_>) -> Option<String> {
+    let delimiter = options.extension.front_matter_delimiter.as_deref()?;
+    let raw = split_off_frontmatter(md, delimiter)?;
+    let content = frontmatter_content(raw, delimiter)?;
+    (!content.is_empty()).then(|| content.to_string())
 }
 
 #[wasm_bindgen(js_name = getFrontmatter)]
@@ -406,6 +421,51 @@ mod tests {
         );
         assert_eq!(
             extract_frontmatter("---\r\n---\r\n\r\n# Body", &frontmatter_options()),
+            None
+        );
+    }
+
+    #[test]
+    fn frontmatter_scan_matches_document_parse() {
+        let options = frontmatter_options();
+        let cases = [
+            "---\ntitle: Hello\n---\n\n# Body",
+            "---\r\ntitle: Hello\r\n---\r\n\r\n# Body",
+            "---\ntitle: Hello\n---\n# No blank line",
+            "---\ntitle: Hello\n---",
+            "---\ntitle: Hello\n---\n",
+            "---\ntitle: Hello   \n---",
+            "---\ntitle: Hello\r\n---\n",
+            "\u{feff}---\ntitle: Hello\n---\n\n# Body",
+            "---\ntitle: Hello\n---x\n\n# Unterminated close",
+            "---\ntitle: Hello\n--- \n\n# Trailing space on close",
+            "---\ntitle: Hello",
+            "--- \ntitle: Space after open\n---\n",
+            "---\nfirst\n---\nsecond\n---\r\nthird",
+            "---\n\n---\n\n# Blank content",
+            "# No frontmatter",
+            "",
+            "---",
+        ];
+        for source in cases {
+            let arena = Arena::new();
+            let root = parse_document(&arena, source, &options);
+            let parsed = root.children().find_map(|child| {
+                let data = child.data.borrow();
+                let comrak::nodes::NodeValue::FrontMatter(raw) = &data.value else {
+                    return None;
+                };
+                Some(raw.clone())
+            });
+            let scanned = split_off_frontmatter(source, "---").map(str::to_string);
+            assert_eq!(scanned, parsed, "raw block mismatch for {source:?}");
+        }
+    }
+
+    #[test]
+    fn frontmatter_absent_when_extension_disabled() {
+        assert_eq!(
+            extract_frontmatter("---\ntitle: Hello\n---\n", &comrak::Options::default()),
             None
         );
     }
