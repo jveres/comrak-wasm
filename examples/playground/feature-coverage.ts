@@ -57,6 +57,8 @@ export const parseFeatureCoverage = {
 		"intentionally false because stock formatters require reordered definitions",
 	escapedCharSpans: "escaped character sample",
 	sourceposChars: "CJK source-position sample",
+	brokenLinkCallback:
+		"intentionally unset; a function cannot ride the serializable playground fixture",
 } as const satisfies Record<keyof ParseOptions, string>;
 
 export const renderFeatureCoverage = {

@@ -86,7 +86,7 @@ describe("core", () => {
 describe("playground feature fixture", () => {
 	test("tracks every public option in a compile-time coverage inventory", () => {
 		expect(Object.keys(extensionFeatureCoverage)).toHaveLength(35);
-		expect(Object.keys(parseFeatureCoverage)).toHaveLength(9);
+		expect(Object.keys(parseFeatureCoverage)).toHaveLength(10);
 		expect(Object.keys(renderFeatureCoverage)).toHaveLength(18);
 	});
 
@@ -1133,6 +1133,142 @@ describe("url rewriter", () => {
 		expect(() => renderUnchecked("[link](url)", {}, null, {})).toThrow(
 			/link URL rewriter must be a Function/,
 		);
+	});
+});
+
+// --- Broken link callback ---
+
+describe("broken link callback", () => {
+	const markdown = "See [the Docs][docs] and [Other Thing].";
+
+	test("resolves references with a url and title", () => {
+		const html = mdToHtml(markdown, {
+			parse: {
+				brokenLinkCallback: ({ normalized }) => ({
+					url: `https://example.com/${normalized}`,
+					title: `Title for ${normalized}`,
+				}),
+			},
+		});
+
+		expect(html).toContain(
+			'<a href="https://example.com/docs" title="Title for docs">the Docs</a>',
+		);
+		expect(html).toContain(
+			'<a href="https://example.com/other%20thing" title="Title for other thing">Other Thing</a>',
+		);
+	});
+
+	test("accepts a url string shorthand without a title", () => {
+		const html = mdToHtml("[link][ref]", {
+			parse: { brokenLinkCallback: () => "https://example.com/short" },
+		});
+
+		expect(html).toContain('<a href="https://example.com/short">link</a>');
+		expect(html).not.toContain("title=");
+	});
+
+	test("passes the normalized and original labels", () => {
+		const seen: Array<{ normalized: string; original: string }> = [];
+		mdToHtml("[Foo   Bar]", {
+			parse: {
+				brokenLinkCallback: (reference) => {
+					seen.push({ ...reference });
+					return null;
+				},
+			},
+		});
+
+		expect(seen).toEqual([{ normalized: "foo bar", original: "Foo   Bar" }]);
+	});
+
+	test("leaves references unresolved on null or undefined", () => {
+		const html = mdToHtml("[missing][ref] and [gone]", {
+			parse: { brokenLinkCallback: () => null },
+		});
+
+		expect(html).toBe("<p>[missing][ref] and [gone]</p>\n");
+	});
+
+	test.each(invalidStringCallbacks)(
+		"leaves references unresolved when the callback $description",
+		({ callback }) => {
+			const html = mdToHtml("[missing][ref]", {
+				parse: { brokenLinkCallback: callback },
+			});
+
+			expect(html).toBe("<p>[missing][ref]</p>\n");
+		},
+	);
+
+	test("ignores objects without a string url", () => {
+		const html = mdToHtml("[missing][ref]", {
+			parse: {
+				brokenLinkCallback: () =>
+					({ url: 42, title: "x" }) as unknown as { url: string },
+			},
+		});
+
+		expect(html).toBe("<p>[missing][ref]</p>\n");
+	});
+
+	test("is not consulted for references that have a definition", () => {
+		let calls = 0;
+		const html = mdToHtml("[defined][ref]\n\n[ref]: https://defined.example", {
+			parse: {
+				brokenLinkCallback: () => {
+					calls += 1;
+					return "https://never.example";
+				},
+			},
+		});
+
+		expect(calls).toBe(0);
+		expect(html).toContain('href="https://defined.example"');
+	});
+
+	test("applies to CommonMark output", () => {
+		const commonmark = mdToCommonmark("[link][ref]", {
+			parse: {
+				brokenLinkCallback: () => ({ url: "https://example.com", title: "T" }),
+			},
+		});
+
+		expect(commonmark).toBe('[link](https://example.com "T")\n');
+	});
+
+	test("is retained by prepared options", () => {
+		const prepared = new PreparedOptions({
+			parse: { brokenLinkCallback: () => "https://prepared.example" },
+		});
+
+		try {
+			expect(prepared.mdToHtml("[a][x]")).toContain(
+				'href="https://prepared.example"',
+			);
+			expect(prepared.mdToHtml("[b][y]")).toContain(
+				'href="https://prepared.example"',
+			);
+		} finally {
+			prepared.free();
+		}
+	});
+
+	test("rejects a non-function callback", () => {
+		expect(() =>
+			mdToHtml("[a][x]", {
+				parse: { brokenLinkCallback: 42 as unknown as () => string },
+			}),
+		).toThrow(/parse\.brokenLinkCallback must be a Function/);
+	});
+
+	test("treats null and undefined callbacks as unset", () => {
+		expect(
+			mdToHtml("[a][x]", { parse: { brokenLinkCallback: null as never } }),
+		).toBe("<p>[a][x]</p>\n");
+		expect(
+			mdToHtml("[a][x]", { parse: { brokenLinkCallback: undefined as never } }),
+		).toBe("<p>[a][x]</p>\n");
 	});
 });
 

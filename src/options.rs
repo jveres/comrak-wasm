@@ -1,5 +1,10 @@
+use std::sync::Arc;
+
+use js_sys::{Function, Reflect};
 use serde::Deserialize;
 use wasm_bindgen::JsValue;
+
+use crate::plugins::optional_function;
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +58,16 @@ struct ParseOptions {
     leave_footnote_definitions: Option<bool>,
     escaped_char_spans: Option<bool>,
     sourcepos_chars: Option<bool>,
+    /// Raw JS value passed through untouched; validated as a Function in
+    /// `build`. `None` when the key is absent.
+    #[serde(default, deserialize_with = "preserved_js_value")]
+    broken_link_callback: Option<JsValue>,
+}
+
+fn preserved_js_value<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<JsValue>, D::Error> {
+    serde_wasm_bindgen::preserve::deserialize(deserializer).map(Some)
 }
 
 #[derive(Deserialize, Default)]
@@ -114,10 +129,61 @@ pub(crate) fn from_js(value: Option<JsValue>) -> Result<comrak::Options<'static>
         })?,
     };
 
-    Ok(build(options))
+    build(options)
 }
 
-fn build(opts: ComrakOptions) -> comrak::Options<'static> {
+/// Bridges a JS `(reference) => resolved` callback onto comrak's
+/// `BrokenLinkCallback`. The callback receives `{ normalized, original }` and
+/// resolves the reference by returning a URL string or `{ url, title? }`.
+/// `null`, `undefined`, a thrown exception, or any other value leaves the
+/// reference unresolved so it renders as literal text — the same
+/// fail-safe posture as the URL rewriters.
+struct JsBrokenLinkCallback {
+    resolve_fn: Function,
+}
+
+impl comrak::options::BrokenLinkCallback for JsBrokenLinkCallback {
+    fn resolve(
+        &self,
+        reference: comrak::options::BrokenLinkReference,
+    ) -> Option<comrak::ResolvedReference> {
+        let argument = js_sys::Object::new();
+        Reflect::set(
+            &argument,
+            &JsValue::from_str("normalized"),
+            &JsValue::from_str(reference.normalized),
+        )
+        .ok()?;
+        Reflect::set(
+            &argument,
+            &JsValue::from_str("original"),
+            &JsValue::from_str(reference.original),
+        )
+        .ok()?;
+
+        let value = self.resolve_fn.call1(&JsValue::null(), &argument).ok()?;
+        if let Some(url) = value.as_string() {
+            return Some(comrak::ResolvedReference {
+                url,
+                title: String::new(),
+            });
+        }
+        if !value.is_object() {
+            return None;
+        }
+
+        let url = Reflect::get(&value, &JsValue::from_str("url"))
+            .ok()?
+            .as_string()?;
+        let title = Reflect::get(&value, &JsValue::from_str("title"))
+            .ok()
+            .and_then(|title| title.as_string())
+            .unwrap_or_default();
+        Some(comrak::ResolvedReference { url, title })
+    }
+}
+
+fn build(opts: ComrakOptions) -> Result<comrak::Options<'static>, JsValue> {
     let mut options = comrak::Options::default();
 
     if let Some(ext) = opts.extension {
@@ -193,6 +259,13 @@ fn build(opts: ComrakOptions) -> comrak::Options<'static> {
         if let Some(value) = parse.default_info_string {
             options.parse.default_info_string = Some(value);
         }
+        if let Some(value) = parse.broken_link_callback {
+            if let Some(function) = optional_function(value, "parse.brokenLinkCallback")? {
+                options.parse.broken_link_callback = Some(Arc::new(JsBrokenLinkCallback {
+                    resolve_fn: function,
+                }));
+            }
+        }
     }
 
     if let Some(render) = opts.render {
@@ -241,7 +314,7 @@ fn build(opts: ComrakOptions) -> comrak::Options<'static> {
         }
     }
 
-    options
+    Ok(options)
 }
 
 #[cfg(test)]
@@ -268,7 +341,8 @@ mod tests {
                 alert_style: Some(AlertStyle::Semantic),
                 ..RenderOptions::default()
             }),
-        });
+        })
+        .expect("options without a callback build infallibly");
 
         assert!(options.extension.math_latex);
         assert!(options.extension.block_directive);

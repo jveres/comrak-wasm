@@ -67,6 +67,32 @@ export interface ExtensionOptions {
 	linkAttributes?: boolean;
 }
 
+/** A reference-style link label that has no matching definition. */
+export interface BrokenLinkReference {
+	/** The label after Unicode case folding and whitespace normalization. */
+	normalized: string;
+	/** The label exactly as written in the source. */
+	original: string;
+}
+
+/** A resolved link target returned by a {@link BrokenLinkCallback}. */
+export interface ResolvedReference {
+	url: string;
+	/** Link title; omitted or empty for none. */
+	title?: string;
+}
+
+/**
+ * Resolves reference links whose label has no definition. Return a URL string
+ * or a {@link ResolvedReference} to link the reference. Return `null` or
+ * `undefined` to leave it unresolved, in which case the label renders as
+ * literal text. Thrown exceptions and non-conforming return values also leave
+ * the reference unresolved.
+ */
+export type BrokenLinkCallback = (
+	reference: BrokenLinkReference,
+) => ResolvedReference | string | null | undefined;
+
 export interface ParseOptions {
 	smart?: boolean;
 	defaultInfoString?: string;
@@ -78,6 +104,12 @@ export interface ParseOptions {
 	escapedCharSpans?: boolean;
 	/** Counts source-position columns as Unicode characters instead of UTF-8 bytes. */
 	sourceposChars?: boolean;
+	/**
+	 * Resolves reference links with no matching definition. Applies to every
+	 * renderer and to {@link PreparedOptions}, which retains the callback for
+	 * the lifetime of the handle.
+	 */
+	brokenLinkCallback?: BrokenLinkCallback;
 }
 
 export interface RenderOptions {

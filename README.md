@@ -279,6 +279,27 @@ const html = mdToHtmlWithRewriters(
 );
 ```
 
+### Broken link callback
+
+Reference links whose label has no definition are normally emitted as literal
+text. `parse.brokenLinkCallback` resolves them instead. It rides the options
+object, so it applies to every renderer and to `PreparedOptions`.
+
+```typescript
+const html = mdToHtml("See [the guide][guide].", {
+  parse: {
+    brokenLinkCallback: ({ normalized, original }) => {
+      const page = wiki.lookup(normalized);
+      if (!page) return null; // Leave `[the guide][guide]` as text.
+      return { url: page.url, title: original };
+    },
+  },
+});
+```
+
+Return a URL string, `{ url, title? }`, or `null`/`undefined`. Thrown
+exceptions and non-conforming return values leave the reference unresolved.
+
 ## Render Text and ANSI
 
 Plain-text output preserves useful document structure without styling.

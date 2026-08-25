@@ -444,7 +444,7 @@ pub fn md_to_html_with_rewriters_and_plugins(
     ))
 }
 
-fn optional_function(value: JsValue, name: &str) -> Result<Option<Function>, JsValue> {
+pub(crate) fn optional_function(value: JsValue, name: &str) -> Result<Option<Function>, JsValue> {
     if value.is_null() || value.is_undefined() {
         return Ok(None);
     }
