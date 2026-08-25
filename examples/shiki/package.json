@@ -7,6 +7,6 @@
 	},
 	"dependencies": {
 		"comrak-wasm": "workspace:*",
-		"shiki": "^4.4.2"
+		"shiki": "^4.4.3"
 	}
 }

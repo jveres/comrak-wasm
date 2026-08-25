@@ -46,16 +46,16 @@
 		"md": "node examples/md.mjs"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.7",
-		"@shikijs/langs": "^4.4.2",
-		"@shikijs/themes": "^4.4.2",
-		"@types/node": "^26.1.2",
-		"@vitest/coverage-v8": "^4.1.10",
+		"@biomejs/biome": "^2.5.10",
+		"@shikijs/langs": "^4.4.3",
+		"@shikijs/themes": "^4.4.3",
+		"@types/node": "^26.2.0",
+		"@vitest/coverage-v8": "^4.1.11",
 		"fast-check": "^4.9.0",
-		"katex": "^0.18.1",
-		"shiki": "^4.4.2",
+		"katex": "^0.18.4",
+		"shiki": "^4.4.3",
 		"typescript": "^7.0.2",
-		"vite": "^8.2.0",
-		"vitest": "^4.1.10"
+		"vite": "^8.2.2",
+		"vitest": "^4.1.11"
 	}
 }
