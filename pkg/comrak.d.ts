@@ -139,14 +139,6 @@ export function mdToHtml(md: string, options: any): string;
 
 export function mdToHtmlWithRewriters(md: string, options: any, image_url_rewriter: any, link_url_rewriter: any): string;
 
-/**
- * Renders ONE paragraph's inline Markdown to HTML — the explicit
- * inline-only contract: the input must parse to exactly one paragraph
- * (or nothing, which renders ""); anything else — a heading, a list,
- * an indented code block — is an error, never silent block markup.
- * The output is the paragraph's inner HTML with HTML5 break spelling
- * (`<br>`, no cosmetic newline), ready to splice into a host element.
- */
 export function mdToInlineHtml(md: string, options: any): string;
 
 export function mdToText(md: string, options: any, show_urls?: boolean | null, show_markdown?: boolean | null, table_shadow?: string | null): string;

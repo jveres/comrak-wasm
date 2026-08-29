@@ -65,6 +65,8 @@ pub fn canonicalize_commonmark_inline(md: &str, options: JsValue) -> Result<Stri
 /// an indented code block — is an error, never silent block markup.
 /// The output is the paragraph's inner HTML with HTML5 break spelling
 /// (`<br>`, no cosmetic newline), ready to splice into a host element.
+const NOT_ONE_PARAGRAPH: &str = "mdToInlineHtml: input is not a single paragraph";
+
 #[wasm_bindgen(js_name = mdToInlineHtml)]
 pub fn md_to_inline_html(md: &str, options: JsValue) -> Result<String, JsValue> {
     let mut options = options::from_js(Some(options))?;
@@ -72,27 +74,27 @@ pub fn md_to_inline_html(md: &str, options: JsValue) -> Result<String, JsValue> 
     let arena = Arena::new();
     let root = parse_document(&arena, md, &options);
     let mut blocks = root.children();
-    match blocks.next() {
-        None => return Ok(String::new()),
-        Some(first) => {
-            let single = blocks.next().is_none();
-            let paragraph = matches!(
-                first.data.borrow().value,
-                comrak::nodes::NodeValue::Paragraph
-            );
-            if !single || !paragraph {
-                return Err(JsValue::from_str(
-                    "mdToInlineHtml: input is not a single paragraph",
-                ));
-            }
-        }
+    let Some(first) = blocks.next() else {
+        return Ok(String::new());
+    };
+    let paragraph = matches!(
+        first.data.borrow().value,
+        comrak::nodes::NodeValue::Paragraph
+    );
+    if blocks.next().is_some() || !paragraph {
+        return Err(JsValue::from_str(NOT_ONE_PARAGRAPH));
     }
-    let html = markdown_to_html(md, &options);
-    let trimmed = html.trim();
-    let inner = trimmed
+    // Render from the tree already in hand — the previous shape
+    // re-parsed the identical input (2x the cost of every inline
+    // render downstream).
+    let mut html = String::new();
+    comrak::format_html(root, &options, &mut html)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let inner = html
+        .trim()
         .strip_prefix("<p>")
         .and_then(|rest| rest.strip_suffix("</p>"))
-        .ok_or_else(|| JsValue::from_str("mdToInlineHtml: input is not a single paragraph"))?;
+        .ok_or_else(|| JsValue::from_str(NOT_ONE_PARAGRAPH))?;
     Ok(inner.replace("<br />", "<br>"))
 }
 

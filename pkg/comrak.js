@@ -860,12 +860,6 @@ export function mdToHtmlWithRewriters(md, options, image_url_rewriter, link_url_
 }
 
 /**
- * Renders ONE paragraph's inline Markdown to HTML — the explicit
- * inline-only contract: the input must parse to exactly one paragraph
- * (or nothing, which renders ""); anything else — a heading, a list,
- * an indented code block — is an error, never silent block markup.
- * The output is the paragraph's inner HTML with HTML5 break spelling
- * (`<br>`, no cosmetic newline), ready to splice into a host element.
  * @param {string} md
  * @param {any} options
  * @returns {string}

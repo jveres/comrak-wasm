@@ -10,19 +10,19 @@ use comrak::nodes::{AstNode, NodeValue, Sourcepos};
 use serde::Serialize;
 use wasm_bindgen::JsValue;
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct Point {
     line: usize,
     column: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct Span {
     start: Point,
     end: Point,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonNode {
     #[serde(rename = "type")]
@@ -95,28 +95,8 @@ fn base(node_type: &'static str, pos: Sourcepos, children: Vec<JsonNode>) -> Jso
     JsonNode {
         node_type,
         sourcepos: span(pos),
-        literal: None,
-        level: None,
-        setext: None,
-        list_type: None,
-        start: None,
-        delimiter: None,
-        tight: None,
-        fenced: None,
-        info: None,
-        url: None,
-        title: None,
-        name: None,
-        header: None,
-        alignments: None,
-        checked: None,
-        symbol: None,
-        display_math: None,
-        dollar_math: None,
-        code: None,
-        emoji: None,
-        alert_type: None,
         children,
+        ..Default::default()
     }
 }
 
