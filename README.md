@@ -401,6 +401,46 @@ escapeCommonmarkInline("5 * 3, **not bold**"); // "5 \\* 3, \\*\\*not bold\\*\\*
 mdToHtml(escapeCommonmarkInline("# not a heading")); // "<p># not a heading</p>\n"
 ```
 
+## Inline-Only Rendering
+
+`mdToInlineHtml` renders ONE paragraph's inline Markdown to its inner
+HTML — the explicit inline-only contract for editors: the input must
+parse to exactly one paragraph (empty renders `""`), anything else
+throws. Breaks come out HTML5-style (`<br>`, no cosmetic newline).
+
+```typescript
+import { mdToInlineHtml } from "comrak-wasm";
+
+mdToInlineHtml("a **b**\nc", { render: { hardbreaks: true } });
+// "a <strong>b</strong><br>c"
+mdToInlineHtml("# heading"); // throws
+```
+
+`canonicalizeCommonmarkInline` is its write-direction sibling: parse
+an inline-intent paragraph and print it back with only the escapes
+that matter, line-edge whitespace preserved as character references.
+`escapeCommonmarkLinkDestination` brackets a URL (`<...>`) so spaces
+and parentheses survive as a link destination.
+
+## The AST as JSON
+
+`mdToAst` parses the document and returns the whole AST as plain JSON
+(`{ type, sourcepos, ...fields, children }` per node) — the general
+projection for tooling and custom renderers. Comrak's arena tree
+cannot cross the wasm boundary as live objects; this is one
+serialization into JS-native values, every node type mapped
+exhaustively.
+
+```typescript
+import { mdToAst } from "comrak-wasm";
+
+const ast = mdToAst("# Hi\n\npara **bold**");
+ast.children?.[0]; // { type: "heading", level: 1, sourcepos: {...}, ... }
+```
+
+See [docs/comrak-update-watchlist.md](docs/comrak-update-watchlist.md)
+for capabilities to re-check when the comrak dependency is bumped.
+
 ## Use the CLI
 
 The repository includes a small Node.js example.

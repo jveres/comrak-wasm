@@ -1,4 +1,5 @@
 mod ansi;
+mod ast;
 mod heal;
 mod options;
 mod plugins;
@@ -56,6 +57,57 @@ pub fn canonicalize_commonmark_inline(md: &str, options: JsValue) -> Result<Stri
     let printed = markdown_to_commonmark(&guard_edges(md), &options);
     let flat = printed.strip_suffix('\n').unwrap_or(&printed);
     Ok(guard_edges(flat))
+}
+
+/// Renders ONE paragraph's inline Markdown to HTML — the explicit
+/// inline-only contract: the input must parse to exactly one paragraph
+/// (or nothing, which renders ""); anything else — a heading, a list,
+/// an indented code block — is an error, never silent block markup.
+/// The output is the paragraph's inner HTML with HTML5 break spelling
+/// (`<br>`, no cosmetic newline), ready to splice into a host element.
+#[wasm_bindgen(js_name = mdToInlineHtml)]
+pub fn md_to_inline_html(md: &str, options: JsValue) -> Result<String, JsValue> {
+    let mut options = options::from_js(Some(options))?;
+    options.render.compact_html = true;
+    let arena = Arena::new();
+    let root = parse_document(&arena, md, &options);
+    let mut blocks = root.children();
+    match blocks.next() {
+        None => return Ok(String::new()),
+        Some(first) => {
+            let single = blocks.next().is_none();
+            let paragraph = matches!(
+                first.data.borrow().value,
+                comrak::nodes::NodeValue::Paragraph
+            );
+            if !single || !paragraph {
+                return Err(JsValue::from_str(
+                    "mdToInlineHtml: input is not a single paragraph",
+                ));
+            }
+        }
+    }
+    let html = markdown_to_html(md, &options);
+    let trimmed = html.trim();
+    let inner = trimmed
+        .strip_prefix("<p>")
+        .and_then(|rest| rest.strip_suffix("</p>"))
+        .ok_or_else(|| JsValue::from_str("mdToInlineHtml: input is not a single paragraph"))?;
+    Ok(inner.replace("<br />", "<br>"))
+}
+
+/// The whole AST as plain JSON (`{ type, sourcepos, …fields, children }`
+/// per node). Comrak's tree is arena-allocated and lifetime-bound — it
+/// cannot cross the wasm boundary as live objects, so this is the
+/// honest export: one serialization into JS-native values, every node
+/// type mapped exhaustively (a comrak upgrade that adds one fails the
+/// build rather than dropping nodes).
+#[wasm_bindgen(js_name = mdToAst)]
+pub fn md_to_ast(md: &str, options: JsValue) -> Result<JsValue, JsValue> {
+    let options = options::from_js(Some(options))?;
+    let arena = Arena::new();
+    let root = parse_document(&arena, md, &options);
+    ast::to_js(&ast::json_of(root))
 }
 
 fn guard_edges(text: &str) -> String {

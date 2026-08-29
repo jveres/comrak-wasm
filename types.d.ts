@@ -199,6 +199,66 @@ export function canonicalizeCommonmarkInline(
 	md: string,
 	options?: ComrakOptions | null,
 ): string;
+/**
+ * Renders ONE paragraph's inline Markdown to HTML — the explicit
+ * inline-only contract: the input must parse to exactly one paragraph
+ * (or nothing, which renders ""); anything else throws. The output is
+ * the paragraph's inner HTML with HTML5 break spelling (`<br>`, no
+ * cosmetic newline), ready to splice into a host element.
+ */
+export function mdToInlineHtml(
+	md: string,
+	options?: ComrakOptions | null,
+): string;
+
+/** A position in the Markdown source (1-based). */
+export interface AstPoint {
+	line: number;
+	column: number;
+}
+
+/**
+ * One AST node as plain JSON. `type` is comrak's node kind in
+ * camelCase ("document", "paragraph", "heading", "text", "strong",
+ * "softBreak", "lineBreak", "code", "link", …); the optional fields
+ * carry that kind's payload (heading `level`, link `url`/`title`,
+ * text/code `literal`, list `listType`/`start`/`tight`, …).
+ */
+export interface AstNode {
+	type: string;
+	sourcepos: { start: AstPoint; end: AstPoint };
+	literal?: string;
+	level?: number;
+	setext?: boolean;
+	listType?: string;
+	start?: number;
+	delimiter?: string;
+	tight?: boolean;
+	fenced?: boolean;
+	info?: string;
+	url?: string;
+	title?: string;
+	name?: string;
+	header?: boolean;
+	alignments?: string[];
+	checked?: boolean;
+	symbol?: string;
+	displayMath?: boolean;
+	dollarMath?: boolean;
+	code?: string;
+	emoji?: string;
+	alertType?: string;
+	children?: AstNode[];
+}
+
+/**
+ * Parses the document and returns the whole AST as plain JSON — the
+ * general projection for tooling and custom renderers. Comrak's tree
+ * is arena-allocated and cannot cross the wasm boundary as live
+ * objects; this is one serialization into JS-native values, every
+ * node type mapped exhaustively.
+ */
+export function mdToAst(md: string, options?: ComrakOptions | null): AstNode;
 export function mdToHtml(md: string, options?: ComrakOptions | null): string;
 export function mdToCommonmark(
 	md: string,

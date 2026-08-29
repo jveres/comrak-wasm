@@ -759,6 +759,27 @@ export function mdToAnsiWithTheme(md, options, theme) {
 }
 
 /**
+ * The whole AST as plain JSON (`{ type, sourcepos, …fields, children }`
+ * per node). Comrak's tree is arena-allocated and lifetime-bound — it
+ * cannot cross the wasm boundary as live objects, so this is the
+ * honest export: one serialization into JS-native values, every node
+ * type mapped exhaustively (a comrak upgrade that adds one fails the
+ * build rather than dropping nodes).
+ * @param {string} md
+ * @param {any} options
+ * @returns {any}
+ */
+export function mdToAst(md, options) {
+    const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.mdToAst(ptr0, len0, options);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * @param {string} md
  * @param {any} options
  * @returns {string}
@@ -824,6 +845,38 @@ export function mdToHtmlWithRewriters(md, options, image_url_rewriter, link_url_
         const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.mdToHtmlWithRewriters(ptr0, len0, options, image_url_rewriter, link_url_rewriter);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Renders ONE paragraph's inline Markdown to HTML — the explicit
+ * inline-only contract: the input must parse to exactly one paragraph
+ * (or nothing, which renders ""); anything else — a heading, a list,
+ * an indented code block — is an error, never silent block markup.
+ * The output is the paragraph's inner HTML with HTML5 break spelling
+ * (`<br>`, no cosmetic newline), ready to splice into a host element.
+ * @param {string} md
+ * @param {any} options
+ * @returns {string}
+ */
+export function mdToInlineHtml(md, options) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.mdToInlineHtml(ptr0, len0, options);
         var ptr2 = ret[0];
         var len2 = ret[1];
         if (ret[3]) {
@@ -1058,6 +1111,10 @@ function __wbg_get_imports() {
             const ret = arg0.length;
             return ret;
         },
+        __wbg_new_116be93542d39019: function() {
+            const ret = new Array();
+            return ret;
+        },
         __wbg_new_15ae2532051588db: function(arg0, arg1) {
             const ret = new TypeError(getStringFromWasm0(arg0, arg1));
             return ret;
@@ -1088,6 +1145,9 @@ function __wbg_get_imports() {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
+        __wbg_set_a80955eb93b145c6: function(arg0, arg1, arg2) {
+            arg0[arg1 >>> 0] = arg2;
+        },
         __wbindgen_cast_0000000000000001: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
             const ret = arg0;

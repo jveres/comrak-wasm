@@ -123,11 +123,31 @@ export function mdToAnsi(md: string, options: any, theme: any): string;
 
 export function mdToAnsiWithTheme(md: string, options: any, theme: PreparedAnsiTheme): string;
 
+/**
+ * The whole AST as plain JSON (`{ type, sourcepos, …fields, children }`
+ * per node). Comrak's tree is arena-allocated and lifetime-bound — it
+ * cannot cross the wasm boundary as live objects, so this is the
+ * honest export: one serialization into JS-native values, every node
+ * type mapped exhaustively (a comrak upgrade that adds one fails the
+ * build rather than dropping nodes).
+ */
+export function mdToAst(md: string, options: any): any;
+
 export function mdToCommonmark(md: string, options: any): string;
 
 export function mdToHtml(md: string, options: any): string;
 
 export function mdToHtmlWithRewriters(md: string, options: any, image_url_rewriter: any, link_url_rewriter: any): string;
+
+/**
+ * Renders ONE paragraph's inline Markdown to HTML — the explicit
+ * inline-only contract: the input must parse to exactly one paragraph
+ * (or nothing, which renders ""); anything else — a heading, a list,
+ * an indented code block — is an error, never silent block markup.
+ * The output is the paragraph's inner HTML with HTML5 break spelling
+ * (`<br>`, no cosmetic newline), ready to splice into a host element.
+ */
+export function mdToInlineHtml(md: string, options: any): string;
 
 export function mdToText(md: string, options: any, show_urls?: boolean | null, show_markdown?: boolean | null, table_shadow?: string | null): string;
 
@@ -161,9 +181,11 @@ export interface InitOutput {
     readonly healMarkdown: (a: number, b: number) => [number, number];
     readonly mdToAnsi: (a: number, b: number, c: any, d: any) => [number, number, number, number];
     readonly mdToAnsiWithTheme: (a: number, b: number, c: any, d: number) => [number, number, number, number];
+    readonly mdToAst: (a: number, b: number, c: any) => [number, number, number];
     readonly mdToCommonmark: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToHtml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToHtmlWithRewriters: (a: number, b: number, c: any, d: any, e: any) => [number, number, number, number];
+    readonly mdToInlineHtml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToText: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly mdToXml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly preparedansitheme_new: (a: number) => [number, number, number];

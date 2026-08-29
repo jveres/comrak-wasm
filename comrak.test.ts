@@ -15,12 +15,14 @@ import {
 	initSync,
 	mdToAnsi,
 	mdToAnsiWithTheme,
+	mdToAst,
 	mdToCommonmark,
 	mdToHtml,
 	mdToHtmlWithCodefenceRenderers,
 	mdToHtmlWithPlugins,
 	mdToHtmlWithRewriters,
 	mdToHtmlWithRewritersAndPlugins,
+	mdToInlineHtml,
 	mdToText,
 	mdToXml,
 	mdToXmlWithPlugins,
@@ -705,6 +707,51 @@ describe("canonicalizeCommonmarkInline", () => {
 	test("no trailing newline, empty stays empty", () => {
 		expect(canonicalizeCommonmarkInline("", {})).toBe("");
 		expect(canonicalizeCommonmarkInline("one", {}).endsWith("\n")).toBe(false);
+	});
+});
+
+describe("mdToInlineHtml", () => {
+	test("renders one paragraph's inner HTML with HTML5 breaks", () => {
+		expect(mdToInlineHtml("a **b**\nc", { render: { hardbreaks: true } })).toBe(
+			"a <strong>b</strong><br>c",
+		);
+		expect(mdToInlineHtml("", {})).toBe("");
+	});
+
+	test("anything but a single paragraph throws", () => {
+		expect(() => mdToInlineHtml("# heading", {})).toThrow();
+		expect(() => mdToInlineHtml("one\n\ntwo", {})).toThrow();
+		expect(() => mdToInlineHtml("- item", {})).toThrow();
+	});
+});
+
+describe("mdToAst", () => {
+	test("returns the tree as plain JSON with sourcepos", () => {
+		const ast = mdToAst("# Hi\n\npara **bold**", {});
+		expect(ast.type).toBe("document");
+		const [heading, para] = ast.children ?? [];
+		expect(heading?.type).toBe("heading");
+		expect(heading?.level).toBe(1);
+		expect(heading?.sourcepos.start.line).toBe(1);
+		expect(para?.type).toBe("paragraph");
+		const strong = para?.children?.find((n) => n.type === "strong");
+		expect(strong?.children?.[0]?.literal).toBe("bold");
+	});
+
+	test("carries payload fields across node kinds", () => {
+		const ast = mdToAst(
+			"[t](https://x.test 'ti')\n\n```js\ncode\n```\n\n- a\n- b",
+			{},
+		);
+		const [para, codeBlock, list] = ast.children ?? [];
+		const link = para?.children?.[0];
+		expect(link?.url).toBe("https://x.test");
+		expect(link?.title).toBe("ti");
+		expect(codeBlock?.fenced).toBe(true);
+		expect(codeBlock?.info).toBe("js");
+		expect(codeBlock?.literal).toBe("code\n");
+		expect(list?.listType).toBe("bullet");
+		expect(list?.children?.length).toBe(2);
 	});
 });
 
