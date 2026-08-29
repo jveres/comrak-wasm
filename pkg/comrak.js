@@ -547,6 +547,40 @@ export function ansiThemeLight() {
 }
 
 /**
+ * Canonicalizes an inline-intent Markdown paragraph: parse and print
+ * back with only the escapes that matter (`escapeCommonmarkInline` is
+ * deliberately over-conservative — `cut\.` prints back as `cut.`),
+ * while line-edge whitespace survives as numeric character references
+ * (the block parser treats 4+ leading spaces as indented code, strips
+ * continuation-line indents and trims trailing spaces; `&#32;`/`&#9;`
+ * decode to the exact bytes without counting as line structure). The
+ * output never ends with the printer's own trailing newline.
+ * @param {string} md
+ * @param {any} options
+ * @returns {string}
+ */
+export function canonicalizeCommonmarkInline(md, options) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.canonicalizeCommonmarkInline(ptr0, len0, options);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * @returns {string}
  */
 export function comrakVersion() {
@@ -600,6 +634,28 @@ export function escapeCommonmarkInline(text) {
         const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.escapeCommonmarkInline(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Escapes a URL for inclusion as a CommonMark link destination. Emits
+ * the bracketed `<...>` form, which admits spaces and parentheses by
+ * construction.
+ * @param {string} url
+ * @returns {string}
+ */
+export function escapeCommonmarkLinkDestination(url) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(url, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.escapeCommonmarkLinkDestination(ptr0, len0);
         deferred2_0 = ret[0];
         deferred2_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);

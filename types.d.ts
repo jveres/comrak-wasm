@@ -183,6 +183,22 @@ export function comrakVersion(): string;
  * than strictly necessary; the rendering is unaffected.
  */
 export function escapeCommonmarkInline(text: string): string;
+/**
+ * Escapes a URL for inclusion as a CommonMark link destination. Emits
+ * the bracketed `<...>` form, which admits spaces and parentheses by
+ * construction.
+ */
+export function escapeCommonmarkLinkDestination(url: string): string;
+/**
+ * Canonicalizes an inline-intent Markdown paragraph: parse and print
+ * back with only the escapes that matter, while line-edge whitespace
+ * survives as numeric character references. The output never ends
+ * with the printer's own trailing newline.
+ */
+export function canonicalizeCommonmarkInline(
+	md: string,
+	options?: ComrakOptions | null,
+): string;
 export function mdToHtml(md: string, options?: ComrakOptions | null): string;
 export function mdToCommonmark(
 	md: string,

@@ -34,6 +34,55 @@ pub fn escape_commonmark_inline(text: &str) -> String {
     comrak::escape_commonmark_inline(text)
 }
 
+/// Escapes a URL for inclusion as a CommonMark link destination. Emits
+/// the bracketed `<...>` form, which admits spaces and parentheses by
+/// construction.
+#[wasm_bindgen(js_name = escapeCommonmarkLinkDestination)]
+pub fn escape_commonmark_link_destination(url: &str) -> String {
+    comrak::escape_commonmark_link_destination(url)
+}
+
+/// Canonicalizes an inline-intent Markdown paragraph: parse and print
+/// back with only the escapes that matter (`escapeCommonmarkInline` is
+/// deliberately over-conservative — `cut\.` prints back as `cut.`),
+/// while line-edge whitespace survives as numeric character references
+/// (the block parser treats 4+ leading spaces as indented code, strips
+/// continuation-line indents and trims trailing spaces; `&#32;`/`&#9;`
+/// decode to the exact bytes without counting as line structure). The
+/// output never ends with the printer's own trailing newline.
+#[wasm_bindgen(js_name = canonicalizeCommonmarkInline)]
+pub fn canonicalize_commonmark_inline(md: &str, options: JsValue) -> Result<String, JsValue> {
+    let options = options::from_js(Some(options))?;
+    let printed = markdown_to_commonmark(&guard_edges(md), &options);
+    let flat = printed.strip_suffix('\n').unwrap_or(&printed);
+    Ok(guard_edges(flat))
+}
+
+fn guard_edges(text: &str) -> String {
+    let encode = |s: &str| -> String {
+        s.chars()
+            .map(|c| if c == '\t' { "&#9;" } else { "&#32;" })
+            .collect()
+    };
+    text.split('\n')
+        .map(|line| {
+            let start = line.len() - line.trim_start_matches([' ', '\t']).len();
+            let end = line.trim_end_matches([' ', '\t']).len();
+            if start >= end {
+                encode(line)
+            } else {
+                format!(
+                    "{}{}{}",
+                    encode(&line[..start]),
+                    &line[start..end],
+                    encode(&line[end..])
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub(crate) fn render_html(md: &str, options: &comrak::Options<'_>) -> String {
     markdown_to_html(md, options)
 }

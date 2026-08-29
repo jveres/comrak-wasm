@@ -78,6 +78,18 @@ export function ansiThemeDark(): any;
 
 export function ansiThemeLight(): any;
 
+/**
+ * Canonicalizes an inline-intent Markdown paragraph: parse and print
+ * back with only the escapes that matter (`escapeCommonmarkInline` is
+ * deliberately over-conservative — `cut\.` prints back as `cut.`),
+ * while line-edge whitespace survives as numeric character references
+ * (the block parser treats 4+ leading spaces as indented code, strips
+ * continuation-line indents and trims trailing spaces; `&#32;`/`&#9;`
+ * decode to the exact bytes without counting as line structure). The
+ * output never ends with the printer's own trailing newline.
+ */
+export function canonicalizeCommonmarkInline(md: string, options: any): string;
+
 export function comrakVersion(): string;
 
 /**
@@ -95,6 +107,13 @@ export function detectColorScheme(colorfgbg?: string | null): string;
  * rendering is unaffected.
  */
 export function escapeCommonmarkInline(text: string): string;
+
+/**
+ * Escapes a URL for inclusion as a CommonMark link destination. Emits
+ * the bracketed `<...>` form, which admits spaces and parentheses by
+ * construction.
+ */
+export function escapeCommonmarkLinkDestination(url: string): string;
 
 export function getFrontmatter(md: string, options: any): string | undefined;
 
@@ -130,10 +149,12 @@ export interface InitOutput {
     readonly ansiThemeAuto: (a: number, b: number) => any;
     readonly ansiThemeDark: () => any;
     readonly ansiThemeLight: () => any;
+    readonly canonicalizeCommonmarkInline: (a: number, b: number, c: any) => [number, number, number, number];
     readonly codefencerenderer_new: (a: any) => number;
     readonly comrakVersion: () => [number, number];
     readonly detectColorScheme: (a: number, b: number) => [number, number];
     readonly escapeCommonmarkInline: (a: number, b: number) => [number, number];
+    readonly escapeCommonmarkLinkDestination: (a: number, b: number) => [number, number];
     readonly getFrontmatter: (a: number, b: number, c: any) => [number, number, number, number];
     readonly headingadapter_clone: (a: number) => number;
     readonly headingadapter_new: (a: any, b: any) => number;

@@ -4,9 +4,11 @@ import {
 	ansiThemeAuto,
 	ansiThemeDark,
 	ansiThemeLight,
+	canonicalizeCommonmarkInline,
 	comrakVersion,
 	detectColorScheme,
 	escapeCommonmarkInline,
+	escapeCommonmarkLinkDestination,
 	getFrontmatter,
 	HeadingAdapter,
 	healMarkdown,
@@ -661,6 +663,48 @@ describe("escapeCommonmarkInline", () => {
 		expect(mdToHtml(escapeCommonmarkInline("plain words"), {})).toBe(
 			"<p>plain words</p>\n",
 		);
+	});
+});
+
+describe("escapeCommonmarkLinkDestination", () => {
+	test("brackets the destination so spaces and parens survive", () => {
+		const dest = escapeCommonmarkLinkDestination("https://x.test/a b(c)");
+		const html = mdToHtml(`[t](${dest})`, {});
+		expect(html).toContain('href="https://x.test/a%20b(c)"');
+	});
+});
+
+describe("canonicalizeCommonmarkInline", () => {
+	test("drops over-conservative escapes, keeps the ones that matter", () => {
+		expect(canonicalizeCommonmarkInline("Seam, the clean cut\\.", {})).toBe(
+			"Seam, the clean cut.",
+		);
+		expect(canonicalizeCommonmarkInline("5 \\* 3 \\= 15", {})).toBe(
+			"5 \\* 3 = 15",
+		);
+	});
+
+	test("line-edge whitespace survives as character references", () => {
+		const four = canonicalizeCommonmarkInline("    four", {});
+		expect(four).toBe("&#32;&#32;&#32;&#32;four");
+		// …and never re-parses as an indented code block.
+		expect(mdToHtml(four, {})).toBe("<p>    four</p>\n");
+		expect(canonicalizeCommonmarkInline("trail  ", {})).toBe("trail&#32;&#32;");
+	});
+
+	test("stable: canonical input prints back byte-identical", () => {
+		for (const md of [
+			"**bold** *i* `c` and [t](https://x.test)",
+			"a\nb",
+			"&#32;&#32;lead\ntrail&#32;",
+		]) {
+			expect(canonicalizeCommonmarkInline(md, {})).toBe(md);
+		}
+	});
+
+	test("no trailing newline, empty stays empty", () => {
+		expect(canonicalizeCommonmarkInline("", {})).toBe("");
+		expect(canonicalizeCommonmarkInline("one", {}).endsWith("\n")).toBe(false);
 	});
 });
 
