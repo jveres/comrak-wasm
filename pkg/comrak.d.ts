@@ -86,6 +86,16 @@ export function comrakVersion(): string;
  */
 export function detectColorScheme(colorfgbg?: string | null): string;
 
+/**
+ * Escapes text for literal inclusion in a CommonMark document at a
+ * position where inline parsing occurs. The write-direction escaping
+ * authority for editors serializing user-typed text into Markdown:
+ * `**`, `__init__`, or a leading `# ` come back escaped so they render
+ * as themselves. Comrak escapes more than strictly necessary; the
+ * rendering is unaffected.
+ */
+export function escapeCommonmarkInline(text: string): string;
+
 export function getFrontmatter(md: string, options: any): string | undefined;
 
 export function healMarkdown(md: string): string;
@@ -123,6 +133,7 @@ export interface InitOutput {
     readonly codefencerenderer_new: (a: any) => number;
     readonly comrakVersion: () => [number, number];
     readonly detectColorScheme: (a: number, b: number) => [number, number];
+    readonly escapeCommonmarkInline: (a: number, b: number) => [number, number];
     readonly getFrontmatter: (a: number, b: number, c: any) => [number, number, number, number];
     readonly headingadapter_clone: (a: number) => number;
     readonly headingadapter_new: (a: any, b: any) => number;

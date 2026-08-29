@@ -23,6 +23,17 @@ pub fn comrak_version() -> String {
     comrak::version().to_string()
 }
 
+/// Escapes text for literal inclusion in a CommonMark document at a
+/// position where inline parsing occurs. The write-direction escaping
+/// authority for editors serializing user-typed text into Markdown:
+/// `**`, `__init__`, or a leading `# ` come back escaped so they render
+/// as themselves. Comrak escapes more than strictly necessary; the
+/// rendering is unaffected.
+#[wasm_bindgen(js_name = escapeCommonmarkInline)]
+pub fn escape_commonmark_inline(text: &str) -> String {
+    comrak::escape_commonmark_inline(text)
+}
+
 pub(crate) fn render_html(md: &str, options: &comrak::Options<'_>) -> String {
     markdown_to_html(md, options)
 }

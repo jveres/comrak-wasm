@@ -6,6 +6,7 @@ import {
 	ansiThemeLight,
 	comrakVersion,
 	detectColorScheme,
+	escapeCommonmarkInline,
 	getFrontmatter,
 	HeadingAdapter,
 	healMarkdown,
@@ -635,6 +636,31 @@ describe("commonmark", () => {
 
 	test("formats malformed ordered lists in blockquotes without crashing", () => {
 		expect(mdToCommonmark(">9)\r\u000b", {})).toBe("> 9) \n\n&#11;\n");
+	});
+});
+
+describe("escapeCommonmarkInline", () => {
+	test("inline syntax renders as itself", () => {
+		const html = mdToHtml(escapeCommonmarkInline("**not bold** and __init__"), {
+			extension: { underline: true },
+		});
+		expect(html).toBe("<p>**not bold** and __init__</p>\n");
+	});
+
+	test("block syntax at line start is inert", () => {
+		expect(mdToHtml(escapeCommonmarkInline("# not a heading"), {})).toBe(
+			"<p># not a heading</p>\n",
+		);
+		expect(mdToHtml(escapeCommonmarkInline("- not a list"), {})).toBe(
+			"<p>- not a list</p>\n",
+		);
+	});
+
+	test("plain text and the empty string pass through renderable", () => {
+		expect(escapeCommonmarkInline("")).toBe("");
+		expect(mdToHtml(escapeCommonmarkInline("plain words"), {})).toBe(
+			"<p>plain words</p>\n",
+		);
 	});
 });
 

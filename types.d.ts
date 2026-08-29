@@ -175,6 +175,14 @@ export class PreparedOptions {
 }
 
 export function comrakVersion(): string;
+/**
+ * Escapes text for literal inclusion in a CommonMark document at a
+ * position where inline parsing occurs. Use it when serializing
+ * user-typed text into Markdown: `**`, `__init__`, or a leading `# `
+ * come back escaped so they render as themselves. Comrak escapes more
+ * than strictly necessary; the rendering is unaffected.
+ */
+export function escapeCommonmarkInline(text: string): string;
 export function mdToHtml(md: string, options?: ComrakOptions | null): string;
 export function mdToCommonmark(
 	md: string,

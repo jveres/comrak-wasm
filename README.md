@@ -386,6 +386,21 @@ const html = mdToHtml(healMarkdown(streamChunk), options);
 The healer covers code fences, inline code, bold, italic, strikethrough, links,
 images, block math, setext headings, and incomplete HTML tags.
 
+## Escape Inline Text
+
+`escapeCommonmarkInline` escapes text for literal inclusion in a CommonMark
+document at a position where inline parsing occurs — the write direction of a
+Markdown-producing editor: user-typed text passes through it so `**`,
+`__init__`, or a leading `# ` render as themselves. Comrak escapes more than
+strictly necessary; the rendering is unaffected.
+
+```typescript
+import { escapeCommonmarkInline, mdToHtml } from "comrak-wasm";
+
+escapeCommonmarkInline("5 * 3, **not bold**"); // "5 \\* 3, \\*\\*not bold\\*\\*"
+mdToHtml(escapeCommonmarkInline("# not a heading")); // "<p># not a heading</p>\n"
+```
+
 ## Use the CLI
 
 The repository includes a small Node.js example.

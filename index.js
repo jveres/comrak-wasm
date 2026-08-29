@@ -14,6 +14,7 @@ export {
 	CodefenceRenderer,
 	comrakVersion,
 	detectColorScheme,
+	escapeCommonmarkInline,
 	getFrontmatter,
 	HeadingAdapter,
 	healMarkdown,

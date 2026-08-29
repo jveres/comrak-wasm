@@ -584,6 +584,31 @@ export function detectColorScheme(colorfgbg) {
 }
 
 /**
+ * Escapes text for literal inclusion in a CommonMark document at a
+ * position where inline parsing occurs. The write-direction escaping
+ * authority for editors serializing user-typed text into Markdown:
+ * `**`, `__init__`, or a leading `# ` come back escaped so they render
+ * as themselves. Comrak escapes more than strictly necessary; the
+ * rendering is unaffected.
+ * @param {string} text
+ * @returns {string}
+ */
+export function escapeCommonmarkInline(text) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.escapeCommonmarkInline(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * @param {string} md
  * @param {any} options
  * @returns {string | undefined}
