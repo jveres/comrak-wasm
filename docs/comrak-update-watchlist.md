@@ -36,3 +36,18 @@ instead and retire entries as comrak grows the capability.
    purpose** — a comrak upgrade that adds a node type fails the build
    there. When it does: add the variant's mapping (and its payload
    fields) plus a test line, never a `_` arm.
+
+## The commonmark printer is flanking-naive (round-trip breakage)
+
+`format_commonmark` prints emphasis delimiters without checking the
+flanking rules its own parser enforces: an AST of `text("cut") +
+strong(".")` prints as `cut**.**`, which re-parses as LITERAL
+asterisks (an `**` cannot open between a word character and
+punctuation — CommonMark §emphasis, left-flanking). The legal
+spelling entity-encodes the adjacent word character
+(`cu&#116;**.**` parses as bold), but the printer also DECODES such
+entities on the way out, destroying the guard. seam works around it
+by re-applying its flanking guard after `canonicalizeCommonmarkInline`
+(see seam `src/engine/formatting.ts`, `guardFlanking`). On a comrak
+update, check whether `format_commonmark` learned flanking-aware
+output (then the post-print guard pass can retire).
