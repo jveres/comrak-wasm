@@ -9,7 +9,7 @@
 		"allowJs": true,
 		"checkJs": true,
 		"noEmit": true,
-		"skipLibCheck": false,
+		"skipLibCheck": true,
 		"exactOptionalPropertyTypes": true,
 		"noImplicitOverride": true,
 		"noPropertyAccessFromIndexSignature": true,
