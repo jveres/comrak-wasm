@@ -486,3 +486,22 @@ export default function init(
 		| InitInput
 		| Promise<InitInput>,
 ): Promise<InitOutput>;
+
+/** A complete render snapshot. Compare every block: appending a reference
+ * definition or footnote can invalidate output anywhere in the document. */
+export interface HtmlBlockSnapshot {
+	html: string;
+	/** Exclusive UTF-16 ends of independently parseable HTML fragments.
+	 * Null when raw HTML requires parsing the whole document together.
+	 * Boundaries describe output, not stable Markdown-source identities. */
+	blockEnds: number[] | null;
+}
+export function mdToHtmlBlocks(
+	markdown: string,
+	options?: ComrakOptions,
+): HtmlBlockSnapshot;
+export function mdToStreamingHtmlBlocks(
+	markdown: string,
+	writingOffset: number,
+	options?: ComrakOptions,
+): HtmlBlockSnapshot;

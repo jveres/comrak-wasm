@@ -61,6 +61,8 @@ Every renderer accepts Markdown and an optional `ComrakOptions` object.
 | Function | Output | Purpose |
 | --- | --- | --- |
 | `mdToHtml` | HTML | Standard HTML rendering |
+| `mdToHtmlBlocks` | HTML and block boundaries | Complete snapshot for incremental DOM rendering |
+| `mdToStreamingHtmlBlocks` | HTML, cursor, and block boundaries | Streaming snapshot at a UTF-16 writing offset |
 | `mdToStreamingHtml` | HTML with U+2060 marker | Render a streaming prefix at a UTF-16 writing offset |
 | `mdToCommonmark` | Markdown | Normalized CommonMark |
 | `mdToXml` | XML | CommonMark XML AST |
@@ -367,6 +369,37 @@ const raw = getFrontmatter(markdown, {
 ```
 
 It returns `undefined` when the document has no non-empty frontmatter.
+
+## Render block snapshots
+
+Use `mdToHtmlBlocks(markdown, options)` or
+`mdToStreamingHtmlBlocks(source, writingOffset, options)` when your DOM renderer
+can reuse unchanged blocks. Both parse and render the complete document once.
+The result contains `html` and `blockEnds`, an array of exclusive UTF-16 string
+offsets. Splitting at these offsets reproduces the complete HTML exactly.
+
+```typescript
+import { mdToStreamingHtmlBlocks } from "comrak-wasm";
+
+const snapshot = mdToStreamingHtmlBlocks(source, source.length, options);
+let start = 0;
+const blocks = snapshot.blockEnds?.map((end) => {
+  const block = snapshot.html.slice(start, end);
+  start = end;
+  return block;
+});
+```
+
+Each call returns a complete snapshot, not an append-only patch. Compare every
+fragment with the previous snapshot: later reference definitions, footnotes,
+and heading ID changes can invalidate earlier output. Boundaries identify
+rendered fragments, not stable Markdown source identities. Footnotes share one
+fragment so their section wrapper and numbering remain consistent.
+
+When raw HTML or HEEx can span AST boundaries, `blockEnds` is `null`. Parse that
+HTML as one tree. An empty document has an empty boundary array. If your own
+post-processing or hooks can create markup that spans fragments, use the
+whole-tree fallback for that output too.
 
 ## Heal Streaming Markdown
 

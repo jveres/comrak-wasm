@@ -32,6 +32,14 @@ pub(crate) fn prefix_at_utf16(source: &str, offset: f64) -> Result<&str, &'stati
 }
 
 pub(crate) fn render(md: &str, options: &Options<'_>) -> String {
+    render_with_blocks(md, options, false).html
+}
+
+pub(crate) fn render_with_blocks(
+    md: &str,
+    options: &Options<'_>,
+    boundaries: bool,
+) -> crate::blocks::Output {
     // Comrak normalizes these too. Normalize before healing so source positions
     // and the writing offset use the same line endings and BOM convention.
     let normalized;
@@ -142,11 +150,10 @@ pub(crate) fn render(md: &str, options: &Options<'_>) -> String {
         }
     }
     if has_footnotes {
-        let mut html = String::new();
-        comrak::format_html(root, options, &mut html).expect("writing HTML to a String");
-        let end = html.trim_end_matches('\n').len();
-        html.insert_str(end, CURSOR);
-        return html;
+        let mut output = crate::blocks::render(root, options, boundaries);
+        let end = output.html.trim_end_matches('\n').len();
+        output.insert(end, CURSOR);
+        return output;
     }
     let marker = arena.alloc(AstNode::from(NodeValue::Raw(CURSOR.into())));
     let mut node = root;
@@ -224,13 +231,11 @@ pub(crate) fn render(md: &str, options: &Options<'_>) -> String {
         _ => node.insert_after(marker),
     }
     drop(data);
-    let mut html = String::new();
-    comrak::format_html(root, options, &mut html).expect("writing HTML to a String");
-    if cursor_in_code {
-        html
-    } else {
-        html.replace("\n\u{2060}", CURSOR)
+    let mut output = crate::blocks::render(root, options, boundaries);
+    if !cursor_in_code {
+        output.strip_cursor_linebreaks();
     }
+    output
 }
 
 fn place_after_unfinished_item<'a>(

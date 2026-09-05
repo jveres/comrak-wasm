@@ -1,6 +1,6 @@
 {
 	"name": "comrak-wasm",
-	"version": "0.0.0",
+	"version": "0.2.0",
 	"description": "WebAssembly bindings for comrak — a fast CommonMark + GFM Markdown parser and renderer",
 	"license": "MIT",
 	"private": true,

@@ -1,5 +1,6 @@
 mod ansi;
 mod ast;
+mod blocks;
 mod heal;
 mod options;
 mod plugins;
@@ -10,6 +11,7 @@ mod walker;
 use comrak::{
     markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html, parse_document, Arena,
 };
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
@@ -154,6 +156,34 @@ fn render_xml(md: &str, options: &comrak::Options<'_>) -> String {
 pub fn md_to_html(md: &str, options: JsValue) -> Result<String, JsValue> {
     let options = options::from_js(Some(options))?;
     Ok(render_html(md, &options))
+}
+
+/// Render a complete block snapshot. Boundaries are null for raw HTML whose
+/// browser parsing context may span AST blocks.
+#[wasm_bindgen(js_name = mdToHtmlBlocks)]
+pub fn md_to_html_blocks(md: &str, options: JsValue) -> Result<JsValue, JsValue> {
+    let options = options::from_js(Some(options))?;
+    let arena = Arena::new();
+    let root = parse_document(&arena, md, &options);
+    blocks::render(root, &options, true)
+        .snapshot()
+        .serialize(&serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true))
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Render an incomplete document once with cursor and complete block boundaries.
+#[wasm_bindgen(js_name = mdToStreamingHtmlBlocks)]
+pub fn md_to_streaming_html_blocks(
+    md: &str,
+    writing_offset: f64,
+    options: JsValue,
+) -> Result<JsValue, JsValue> {
+    let options = options::from_js(Some(options))?;
+    let prefix = streaming::prefix_at_utf16(md, writing_offset).map_err(JsValue::from_str)?;
+    streaming::render_with_blocks(prefix, &options, true)
+        .snapshot()
+        .serialize(&serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true))
+        .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 /// Render an incomplete streaming document with one U+2060 cursor marker.

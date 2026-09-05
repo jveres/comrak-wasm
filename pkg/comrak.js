@@ -832,6 +832,23 @@ export function mdToHtml(md, options) {
 }
 
 /**
+ * Render a complete block snapshot. Boundaries are null for raw HTML whose
+ * browser parsing context may span AST blocks.
+ * @param {string} md
+ * @param {any} options
+ * @returns {any}
+ */
+export function mdToHtmlBlocks(md, options) {
+    const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.mdToHtmlBlocks(ptr0, len0, options);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * @param {string} md
  * @param {any} options
  * @param {any} image_url_rewriter
@@ -911,6 +928,23 @@ export function mdToStreamingHtml(md, writing_offset, options) {
     } finally {
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
+}
+
+/**
+ * Render an incomplete document once with cursor and complete block boundaries.
+ * @param {string} md
+ * @param {number} writing_offset
+ * @param {any} options
+ * @returns {any}
+ */
+export function mdToStreamingHtmlBlocks(md, writing_offset, options) {
+    const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.mdToStreamingHtmlBlocks(ptr0, len0, writing_offset, options);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
 }
 
 /**
