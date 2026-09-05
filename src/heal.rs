@@ -46,6 +46,25 @@ pub fn heal_markdown(input: &str) -> String {
     buf
 }
 
+/// Append-only healing for a visible writing cursor. Unfinished tags and
+/// brackets stay visible, and code is handled by the streaming renderer.
+pub(crate) fn heal_streaming(input: &str) -> String {
+    let mut buf = input.to_string();
+    if buf.ends_with(' ') && !buf.ends_with("  ") {
+        buf.pop();
+    }
+    heal_links(&mut buf, true);
+    heal_block_katex(&mut buf);
+    let start = buf
+        .rfind("\n\n")
+        .map_or(0, |i| i + 2)
+        .max(last_closed_fence_end(&buf).unwrap_or(0));
+    let mut tail = buf.split_off(start);
+    heal_inline_markup(&mut tail);
+    buf.push_str(&tail);
+    buf
+}
+
 // --- Helpers ---
 
 fn is_escaped(s: &str, pos: usize) -> bool {
@@ -64,7 +83,7 @@ fn is_escaped(s: &str, pos: usize) -> bool {
 }
 
 #[derive(Clone, Copy)]
-struct Fence {
+pub(crate) struct Fence {
     marker: u8,
     length: usize,
 }
@@ -160,7 +179,7 @@ fn in_fenced_code_block(s: &str, up_to: usize) -> bool {
     open.is_some()
 }
 
-fn unclosed_fence(s: &str) -> Option<Fence> {
+pub(crate) fn unclosed_fence(s: &str) -> Option<Fence> {
     let mut open = None;
     let mut i = 0;
     while i < s.len() {
@@ -173,7 +192,7 @@ fn unclosed_fence(s: &str) -> Option<Fence> {
     open
 }
 
-fn last_closed_fence_end(s: &str) -> Option<usize> {
+pub(crate) fn last_closed_fence_end(s: &str) -> Option<usize> {
     let mut open = None;
     let mut last_end = None;
     let mut i = 0;
@@ -195,7 +214,7 @@ fn last_closed_fence_end(s: &str) -> Option<usize> {
     last_end
 }
 
-fn unclosed_inline_code(s: &str) -> Option<(usize, usize)> {
+pub(crate) fn unclosed_inline_code(s: &str) -> Option<(usize, usize)> {
     let mut inline_open: Option<(usize, usize)> = None; // (run length, opener end)
     let mut open = None;
     let mut i = 0;
@@ -294,7 +313,7 @@ fn heal_block_markup(buf: &mut String) {
     // bounded fixed point here as for mixed inline delimiters.
     for _ in 0..8 {
         let original_len = buf.len();
-        heal_links(buf);
+        heal_links(buf, false);
         heal_html_tag(buf);
         heal_setext(buf);
         heal_block_katex(buf);
@@ -365,7 +384,7 @@ fn heal_setext(buf: &mut String) {
     }
 }
 
-fn heal_links(buf: &mut String) {
+fn heal_links(buf: &mut String, preserve_markers: bool) {
     // Find last unclosed [ or ![. Track fence state and backslash-escape parity
     // inline; calling is_escaped per byte would be O(n^2) on backslash-heavy input.
     let bytes = buf.as_bytes();
@@ -418,7 +437,7 @@ fn heal_links(buf: &mut String) {
     // Compact all unmatched markers in place. Repeated String::drain calls
     // shift the remaining suffix once per marker and become quadratic, while a
     // second output String needlessly raises the Wasm high-water mark.
-    if !unmatched_opens.is_empty() {
+    if !preserve_markers && !unmatched_opens.is_empty() {
         let mut markers = unmatched_opens.into_iter().peekable();
         let mut original_index = 0;
         let mut remove_through = 0;

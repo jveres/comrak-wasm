@@ -61,6 +61,7 @@ Every renderer accepts Markdown and an optional `ComrakOptions` object.
 | Function | Output | Purpose |
 | --- | --- | --- |
 | `mdToHtml` | HTML | Standard HTML rendering |
+| `mdToStreamingHtml` | HTML with U+2060 marker | Render a streaming prefix at a UTF-16 writing offset |
 | `mdToCommonmark` | Markdown | Normalized CommonMark |
 | `mdToXml` | XML | CommonMark XML AST |
 | `mdToText` | Plain text | Structural text without styling |
@@ -385,6 +386,35 @@ const html = mdToHtml(healMarkdown(streamChunk), options);
 
 The healer covers code fences, inline code, bold, italic, strikethrough, links,
 images, block math, setext headings, and incomplete HTML tags.
+
+### Render with a writing cursor
+
+Use `mdToStreamingHtml(source, writingOffset, options)` to render the prefix
+ending at `writingOffset`. The offset counts UTF-16 code units, like JavaScript
+string indices. It must be within the source and must not split a surrogate
+pair. For an accumulated stream, pass `source.length`.
+
+```typescript
+import { mdToStreamingHtml } from "comrak-wasm";
+
+const source = "Hello **world";
+const html = mdToStreamingHtml(source, source.length);
+// <p>Hello <strong>world\u2060</strong></p>\n
+```
+
+This operation heals incomplete delimiters, parses once, and places a reserved
+U+2060 marker in the rendered tree. Replace that marker with your cursor element
+after HTML post-processing. Pass source without existing U+2060 markers.
+
+The cursor stays inside active code and formatting, follows links and images,
+and moves beyond completed tables after a newline. Generated footnotes precede
+the cursor. Incomplete raw HTML block comments and raw-text blocks are closed
+so they cannot swallow it. Existing HTML safety options still apply.
+
+Unlike the standalone `healMarkdown` transform, streaming rendering preserves
+unfinished bracket and tag text. Appended closers that Comrak treats as literal
+text are removed from the tree. This avoids displaying generated punctuation
+while retaining the original source and document-wide reference resolution.
 
 ## Escape Inline Text
 

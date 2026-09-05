@@ -27,6 +27,7 @@ export {
 	mdToHtml,
 	mdToHtmlWithRewriters,
 	mdToInlineHtml,
+	mdToStreamingHtml,
 	mdToText,
 	mdToXml,
 	PreparedAnsiTheme,

@@ -3,6 +3,7 @@ mod ast;
 mod heal;
 mod options;
 mod plugins;
+mod streaming;
 mod text;
 mod walker;
 
@@ -153,6 +154,18 @@ fn render_xml(md: &str, options: &comrak::Options<'_>) -> String {
 pub fn md_to_html(md: &str, options: JsValue) -> Result<String, JsValue> {
     let options = options::from_js(Some(options))?;
     Ok(render_html(md, &options))
+}
+
+/// Render an incomplete streaming document with one U+2060 cursor marker.
+#[wasm_bindgen(js_name = mdToStreamingHtml)]
+pub fn md_to_streaming_html(
+    md: &str,
+    writing_offset: f64,
+    options: JsValue,
+) -> Result<String, JsValue> {
+    let options = options::from_js(Some(options))?;
+    let prefix = streaming::prefix_at_utf16(md, writing_offset).map_err(JsValue::from_str)?;
+    Ok(streaming::render(prefix, &options))
 }
 
 #[wasm_bindgen(js_name = mdToCommonmark)]

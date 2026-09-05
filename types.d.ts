@@ -260,6 +260,20 @@ export interface AstNode {
  */
 export function mdToAst(md: string, options?: ComrakOptions | null): AstNode;
 export function mdToHtml(md: string, options?: ComrakOptions | null): string;
+
+/**
+ * Render source.slice(0, writingOffset) with append-only delimiter healing and
+ * a U+2060 cursor marker at the rendered writing end, using one Markdown parse.
+ * writingOffset counts UTF-16 code units and must not split a surrogate pair.
+ * The marker is reserved; pass Markdown without cursor markers. Replace the
+ * returned marker with your cursor element after HTML post-processing.
+ */
+export function mdToStreamingHtml(
+	source: string,
+	writingOffset: number,
+	options?: ComrakOptions | null,
+): string;
+
 export function mdToCommonmark(
 	md: string,
 	options?: ComrakOptions | null,

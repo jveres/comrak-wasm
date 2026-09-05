@@ -141,6 +141,11 @@ export function mdToHtmlWithRewriters(md: string, options: any, image_url_rewrit
 
 export function mdToInlineHtml(md: string, options: any): string;
 
+/**
+ * Render an incomplete streaming document with one U+2060 cursor marker.
+ */
+export function mdToStreamingHtml(md: string, writing_offset: number, options: any): string;
+
 export function mdToText(md: string, options: any, show_urls?: boolean | null, show_markdown?: boolean | null, table_shadow?: string | null): string;
 
 export function mdToXml(md: string, options: any): string;
@@ -178,6 +183,7 @@ export interface InitOutput {
     readonly mdToHtml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToHtmlWithRewriters: (a: number, b: number, c: any, d: any, e: any) => [number, number, number, number];
     readonly mdToInlineHtml: (a: number, b: number, c: any) => [number, number, number, number];
+    readonly mdToStreamingHtml: (a: number, b: number, c: number, d: any) => [number, number, number, number];
     readonly mdToText: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly mdToXml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly preparedansitheme_new: (a: number) => [number, number, number];

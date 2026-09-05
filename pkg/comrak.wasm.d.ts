@@ -30,6 +30,7 @@ export const mdToCommonmark: (a: number, b: number, c: any) => [number, number, 
 export const mdToHtml: (a: number, b: number, c: any) => [number, number, number, number];
 export const mdToHtmlWithRewriters: (a: number, b: number, c: any, d: any, e: any) => [number, number, number, number];
 export const mdToInlineHtml: (a: number, b: number, c: any) => [number, number, number, number];
+export const mdToStreamingHtml: (a: number, b: number, c: number, d: any) => [number, number, number, number];
 export const mdToText: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number, number];
 export const mdToXml: (a: number, b: number, c: any) => [number, number, number, number];
 export const preparedansitheme_new: (a: number) => [number, number, number];
