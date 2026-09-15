@@ -11,6 +11,7 @@ export {
 	ansiThemeAuto,
 	ansiThemeDark,
 	ansiThemeLight,
+	ansiToHtml,
 	CodefenceRenderer,
 	canonicalizeCommonmarkInline,
 	comrakVersion,

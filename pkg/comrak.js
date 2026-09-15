@@ -547,6 +547,26 @@ export function ansiThemeLight() {
 }
 
 /**
+ * Render ANSI input as escaped, span-styled HTML. Optional lexical provenance
+ * uses the same compact UTF-16 format as mdToHtmlBlocks source mappings.
+ * @param {string} code
+ * @param {boolean | null} [textual]
+ * @param {string | null} [source_map]
+ * @returns {any}
+ */
+export function ansiToHtml(code, textual, source_map) {
+    const ptr0 = passStringToWasm0(code, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(source_map) ? 0 : passStringToWasm0(source_map, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.ansiToHtml(ptr0, len0, isLikeNone(textual) ? 0xFFFFFF : textual ? 1 : 0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Canonicalizes an inline-intent Markdown paragraph: parse and print
  * back with only the escapes that matter (`escapeCommonmarkInline` is
  * deliberately over-conservative — `cut\.` prints back as `cut.`),
@@ -836,12 +856,13 @@ export function mdToHtml(md, options) {
  * browser parsing context may span AST blocks.
  * @param {string} md
  * @param {any} options
+ * @param {boolean | null} [source_map]
  * @returns {any}
  */
-export function mdToHtmlBlocks(md, options) {
+export function mdToHtmlBlocks(md, options, source_map) {
     const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.mdToHtmlBlocks(ptr0, len0, options);
+    const ret = wasm.mdToHtmlBlocks(ptr0, len0, options, isLikeNone(source_map) ? 0xFFFFFF : source_map ? 1 : 0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -935,12 +956,13 @@ export function mdToStreamingHtml(md, writing_offset, options) {
  * @param {string} md
  * @param {number} writing_offset
  * @param {any} options
+ * @param {boolean | null} [source_map]
  * @returns {any}
  */
-export function mdToStreamingHtmlBlocks(md, writing_offset, options) {
+export function mdToStreamingHtmlBlocks(md, writing_offset, options, source_map) {
     const ptr0 = passStringToWasm0(md, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.mdToStreamingHtmlBlocks(ptr0, len0, writing_offset, options);
+    const ret = wasm.mdToStreamingHtmlBlocks(ptr0, len0, writing_offset, options, isLikeNone(source_map) ? 0xFFFFFF : source_map ? 1 : 0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }

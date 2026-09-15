@@ -1,9 +1,11 @@
 mod ansi;
+mod ansi_html;
 mod ast;
 mod blocks;
 mod heal;
 mod options;
 mod plugins;
+mod source_map;
 mod streaming;
 mod text;
 mod walker;
@@ -25,6 +27,22 @@ static ALLOCATOR: lol_alloc::AssumeSingleThreaded<lol_alloc::FreeListAllocator> 
 #[wasm_bindgen(js_name = comrakVersion)]
 pub fn comrak_version() -> String {
     comrak::version().to_string()
+}
+
+/// Render ANSI input as escaped, span-styled HTML. Optional lexical provenance
+/// uses the same compact UTF-16 format as mdToHtmlBlocks source mappings.
+#[wasm_bindgen(js_name = ansiToHtml)]
+pub fn ansi_to_html(
+    code: &str,
+    textual: Option<bool>,
+    source_map: Option<String>,
+) -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&ansi_html::render(
+        code,
+        textual.unwrap_or(false),
+        source_map.as_deref(),
+    ))
+    .map_err(|error| js_sys::Error::new(&error.to_string()).into())
 }
 
 /// Escapes text for literal inclusion in a CommonMark document at a
@@ -161,11 +179,28 @@ pub fn md_to_html(md: &str, options: JsValue) -> Result<String, JsValue> {
 /// Render a complete block snapshot. Boundaries are null for raw HTML whose
 /// browser parsing context may span AST blocks.
 #[wasm_bindgen(js_name = mdToHtmlBlocks)]
-pub fn md_to_html_blocks(md: &str, options: JsValue) -> Result<JsValue, JsValue> {
+pub fn md_to_html_blocks(
+    md: &str,
+    options: JsValue,
+    source_map: Option<bool>,
+) -> Result<JsValue, JsValue> {
     let options = options::from_js(Some(options))?;
     let arena = Arena::new();
-    let root = parse_document(&arena, md, &options);
-    blocks::render(root, &options, true)
+    let (root, map) = if source_map.unwrap_or(false) {
+        let (root, leaves) = comrak::parse_document_with_source_map(&arena, md, &options);
+        (
+            root,
+            Some(source_map::SourceMap::new(
+                md,
+                leaves,
+                md.encode_utf16().count(),
+                options.parse.sourcepos_chars,
+            )),
+        )
+    } else {
+        (parse_document(&arena, md, &options), None)
+    };
+    blocks::render(root, &options, true, map.as_ref())
         .snapshot()
         .serialize(&serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true))
         .map_err(|error| JsValue::from_str(&error.to_string()))
@@ -177,10 +212,11 @@ pub fn md_to_streaming_html_blocks(
     md: &str,
     writing_offset: f64,
     options: JsValue,
+    source_map: Option<bool>,
 ) -> Result<JsValue, JsValue> {
     let options = options::from_js(Some(options))?;
     let prefix = streaming::prefix_at_utf16(md, writing_offset).map_err(JsValue::from_str)?;
-    streaming::render_with_blocks(prefix, &options, true)
+    streaming::render_with_blocks(prefix, &options, true, source_map.unwrap_or(false))
         .snapshot()
         .serialize(&serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true))
         .map_err(|error| JsValue::from_str(&error.to_string()))

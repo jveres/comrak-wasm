@@ -496,12 +496,25 @@ export interface HtmlBlockSnapshot {
 	 * Boundaries describe output, not stable Markdown-source identities. */
 	blockEnds: number[] | null;
 }
+
+/** ANSI input to escaped HTML, not Markdown-to-terminal output.
+ * Enable textual to decode \\e[, \\033[, \\x1b[, \\u001b[, and ^[[ spellings.
+ * sourceMap is the code element's data-md-source attribute from a mapped render.
+ * Output sourceMap describes visible text only; invalid input maps yield "".
+ * Hosts supply CSS for ansi-* classes and own all animation. */
+export function ansiToHtml(
+	code: string,
+	textual?: boolean,
+	sourceMap?: string,
+): { html: string; sourceMap?: string };
 export function mdToHtmlBlocks(
 	markdown: string,
 	options?: ComrakOptions,
+	sourceMap?: boolean,
 ): HtmlBlockSnapshot;
 export function mdToStreamingHtmlBlocks(
 	markdown: string,
 	writingOffset: number,
 	options?: ComrakOptions,
+	sourceMap?: boolean,
 ): HtmlBlockSnapshot;

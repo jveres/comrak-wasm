@@ -54,6 +54,27 @@ initSync({ module: wasm });
 const html = mdToHtml("# Hello");
 ```
 
+## Render ANSI input as HTML
+
+`ansiToHtml(code, textual?, sourceMap?)` decodes terminal escape sequences into
+escaped HTML. This is the reverse direction of `mdToAnsi`: its input is terminal
+text, not Markdown. Markdown renderers keep their existing code-fence behavior.
+
+The result contains `html` and, when supplied, a remapped `sourceMap`. Pass the
+code element's `data-md-source` value from a source-mapped Markdown render.
+The returned map covers visible text only. Removed controls have no rendered
+text, and invalid maps return an empty mapping without suppressing the HTML.
+
+The `textual` flag defaults to `false`. Set it to `true` for ANSI fences that use
+`\\e[`, `\\033[`, `\\x1b[`, `\\u001b[`, or `^[[` instead of raw escape bytes.
+Incomplete trailing sequences remain hidden until a later render completes them.
+The renderer removes cursor, erase, and OSC controls, including terminal links.
+
+Hosts supply CSS for `ansi`, `ansi-b`, `ansi-d`, `ansi-i`, `ansi-u`, `ansi-s`,
+`ansi-inv`, and `ansi-solid`. Named colors use `ansi-fg-0` through `ansi-fg-15`
+and matching `ansi-bg-*` classes. Extended colors use numeric inline RGB styles.
+Hosts also own DOM updates, cursors, and animations.
+
 ## Render Markdown
 
 Every renderer accepts Markdown and an optional `ComrakOptions` object.
@@ -400,6 +421,33 @@ When raw HTML or HEEx can span AST boundaries, `blockEnds` is `null`. Parse that
 HTML as one tree. An empty document has an empty boundary array. If your own
 post-processing or hooks can create markup that spans fragments, use the
 whole-tree fallback for that output too.
+
+### Source-mapped snapshots
+
+Pass `true` as the final argument to `mdToHtmlBlocks` or
+`mdToStreamingHtmlBlocks` to request source mappings during the same parse.
+The default output remains unchanged. The mapped output uses unstyled spans
+around prose and attributes on code elements.
+
+`data-md-source` contains semicolon-separated runs. Each run contains four
+comma-separated integers: source start, source end, rendered UTF-16 length,
+and a linear flag. Source ends are exclusive. A flag of `1` means one-to-one
+UTF-16 offsets. A flag of `0` means the whole rendered run belongs to the
+source range, as with a decoded entity or smart punctuation.
+
+Streaming coordinates refer to source with its initial BOM removed and CRLF
+or CR normalized to LF. Normalize complete input the same way before requesting
+a mapped non-streaming snapshot. Synthetic streaming closers are not appended
+to the caller's source timeline. `data-md-atomic="start,end"` identifies a
+formula that a consumer can animate as one unit.
+
+Consumers must preserve mapped text order when they add syntax highlighting.
+If a custom renderer replaces text without retaining its mapping, the consumer
+must not infer source ownership from matching words. Raw HTML does not receive
+an inferred mapping. Block boundaries include the added mapping markup.
+
+The lexical spans come from the small extension described in
+[the vendored parser notes](vendor/README.md).
 
 ## Heal Streaming Markdown
 

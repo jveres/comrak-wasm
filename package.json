@@ -1,6 +1,6 @@
 {
 	"name": "comrak-wasm",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "WebAssembly bindings for comrak — a fast CommonMark + GFM Markdown parser and renderer",
 	"license": "MIT",
 	"private": true,
@@ -18,7 +18,8 @@
 		"docs",
 		"index.js",
 		"types.d.ts",
-		"pkg"
+		"pkg",
+		"vendor/comrak/COPYING"
 	],
 	"engines": {
 		"node": ">=22"

@@ -79,6 +79,12 @@ export function ansiThemeDark(): any;
 export function ansiThemeLight(): any;
 
 /**
+ * Render ANSI input as escaped, span-styled HTML. Optional lexical provenance
+ * uses the same compact UTF-16 format as mdToHtmlBlocks source mappings.
+ */
+export function ansiToHtml(code: string, textual?: boolean | null, source_map?: string | null): any;
+
+/**
  * Canonicalizes an inline-intent Markdown paragraph: parse and print
  * back with only the escapes that matter (`escapeCommonmarkInline` is
  * deliberately over-conservative — `cut\.` prints back as `cut.`),
@@ -141,7 +147,7 @@ export function mdToHtml(md: string, options: any): string;
  * Render a complete block snapshot. Boundaries are null for raw HTML whose
  * browser parsing context may span AST blocks.
  */
-export function mdToHtmlBlocks(md: string, options: any): any;
+export function mdToHtmlBlocks(md: string, options: any, source_map?: boolean | null): any;
 
 export function mdToHtmlWithRewriters(md: string, options: any, image_url_rewriter: any, link_url_rewriter: any): string;
 
@@ -155,7 +161,7 @@ export function mdToStreamingHtml(md: string, writing_offset: number, options: a
 /**
  * Render an incomplete document once with cursor and complete block boundaries.
  */
-export function mdToStreamingHtmlBlocks(md: string, writing_offset: number, options: any): any;
+export function mdToStreamingHtmlBlocks(md: string, writing_offset: number, options: any, source_map?: boolean | null): any;
 
 export function mdToText(md: string, options: any, show_urls?: boolean | null, show_markdown?: boolean | null, table_shadow?: string | null): string;
 
@@ -177,6 +183,7 @@ export interface InitOutput {
     readonly ansiThemeAuto: (a: number, b: number) => any;
     readonly ansiThemeDark: () => any;
     readonly ansiThemeLight: () => any;
+    readonly ansiToHtml: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly canonicalizeCommonmarkInline: (a: number, b: number, c: any) => [number, number, number, number];
     readonly codefencerenderer_new: (a: any) => number;
     readonly comrakVersion: () => [number, number];
@@ -192,11 +199,11 @@ export interface InitOutput {
     readonly mdToAst: (a: number, b: number, c: any) => [number, number, number];
     readonly mdToCommonmark: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToHtml: (a: number, b: number, c: any) => [number, number, number, number];
-    readonly mdToHtmlBlocks: (a: number, b: number, c: any) => [number, number, number];
+    readonly mdToHtmlBlocks: (a: number, b: number, c: any, d: number) => [number, number, number];
     readonly mdToHtmlWithRewriters: (a: number, b: number, c: any, d: any, e: any) => [number, number, number, number];
     readonly mdToInlineHtml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly mdToStreamingHtml: (a: number, b: number, c: number, d: any) => [number, number, number, number];
-    readonly mdToStreamingHtmlBlocks: (a: number, b: number, c: number, d: any) => [number, number, number];
+    readonly mdToStreamingHtmlBlocks: (a: number, b: number, c: number, d: any, e: number) => [number, number, number];
     readonly mdToText: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly mdToXml: (a: number, b: number, c: any) => [number, number, number, number];
     readonly preparedansitheme_new: (a: number) => [number, number, number];

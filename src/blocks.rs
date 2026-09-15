@@ -1,5 +1,6 @@
 //! HTML boundaries recorded during one document-wide render. Never render each
 //! AST child separately: heading IDs and footnote numbering share a context.
+use std::fmt::Write;
 use std::{cell::Cell, fmt};
 
 use comrak::{
@@ -91,6 +92,8 @@ struct Boundaries<'a> {
     length: &'a Cell<usize>,
     ends: Vec<usize>,
     footnotes: bool,
+    mapping: Option<&'a crate::source_map::SourceMap>,
+    annotations: Vec<(usize, usize, String, bool)>,
 }
 
 fn record<'a>(
@@ -98,7 +101,54 @@ fn record<'a>(
     node: &'a AstNode<'a>,
     entering: bool,
 ) -> Result<ChildRendering, fmt::Error> {
+    let before = context.user.length.get();
+    let data = node.data.borrow();
+    let attribute = if entering && context.user.mapping.is_some() {
+        let literal = match &data.value {
+            NodeValue::Text(text) => Some(text.as_ref()),
+            NodeValue::ShortCode(code) => Some(code.emoji.as_str()),
+            NodeValue::Code(code) => Some(code.literal.as_str()),
+            NodeValue::CodeBlock(code) => Some(code.literal.as_str()),
+            _ => None,
+        };
+        literal.and_then(|text| {
+            context
+                .user
+                .mapping
+                .and_then(|map| map.attribute(data.sourcepos, text))
+        })
+    } else {
+        None
+    };
+    let text = matches!(data.value, NodeValue::Text(_) | NodeValue::ShortCode(_));
+    let atomic = if entering && matches!(data.value, NodeValue::Math(_)) {
+        context.user.mapping.map(|map| map.atomic(data.sourcepos))
+    } else {
+        None
+    };
+    drop(data);
+    if text {
+        if let Some(attribute) = &attribute {
+            context.write_str(&format!("<span data-md-source=\"{attribute}\">"))?;
+        }
+    }
     let rendering = format_node_default(context, node, entering)?;
+    if let Some(attribute) = attribute {
+        if text {
+            context.write_str("</span>")?;
+        } else {
+            context
+                .user
+                .annotations
+                .push((before, context.user.length.get(), attribute, false));
+        }
+    }
+    if let Some(atomic) = atomic {
+        context
+            .user
+            .annotations
+            .push((before, context.user.length.get(), atomic, true));
+    }
     let top_level = node
         .parent()
         .is_some_and(|parent| matches!(parent.data.borrow().value, NodeValue::Document));
@@ -118,7 +168,12 @@ fn record<'a>(
     Ok(rendering)
 }
 
-pub(crate) fn render<'a>(root: &'a AstNode<'a>, options: &Options<'_>, boundaries: bool) -> Output {
+pub(crate) fn render<'a>(
+    root: &'a AstNode<'a>,
+    options: &Options<'_>,
+    boundaries: bool,
+    mapping: Option<&crate::source_map::SourceMap>,
+) -> Output {
     // Literal HTML can span AST siblings or trigger browser tree repair. Only
     // whole-tree parsing preserves that context. Escaped raw HTML is safe but
     // conservatively takes the same fallback; callers never guess boundaries.
@@ -132,7 +187,7 @@ pub(crate) fn render<'a>(root: &'a AstNode<'a>, options: &Options<'_>, boundarie
                     | NodeValue::HeexInline(_)
             )
         });
-    if !independent {
+    if !independent && mapping.is_none() {
         let mut html = String::new();
         comrak::format_html(root, options, &mut html).expect("writing HTML to a String");
         return Output { html, ends: None };
@@ -152,14 +207,26 @@ pub(crate) fn render<'a>(root: &'a AstNode<'a>, options: &Options<'_>, boundarie
             length: &length,
             ends: Vec::new(),
             footnotes: false,
+            mapping,
+            annotations: Vec::new(),
         },
     )
     .expect("writing HTML to a String");
     if !writer.html.is_empty() && state.ends.last() != Some(&writer.html.len()) {
         state.ends.push(writer.html.len());
     }
-    Output {
+    let mut output = Output {
         html: writer.html,
-        ends: Some(state.ends),
+        ends: independent.then_some(state.ends),
+    };
+    for (start, end, attribute, atomic) in state.annotations.into_iter().rev() {
+        if let Some(index) = output.html[start..end].find(if atomic { "<span" } else { "<code" }) {
+            let name = if atomic { "atomic" } else { "source" };
+            output.insert(
+                start + index + 5,
+                &format!(" data-md-{name}=\"{attribute}\""),
+            );
+        }
     }
+    output
 }

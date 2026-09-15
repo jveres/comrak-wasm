@@ -32,13 +32,14 @@ pub(crate) fn prefix_at_utf16(source: &str, offset: f64) -> Result<&str, &'stati
 }
 
 pub(crate) fn render(md: &str, options: &Options<'_>) -> String {
-    render_with_blocks(md, options, false).html
+    render_with_blocks(md, options, false, false).html
 }
 
 pub(crate) fn render_with_blocks(
     md: &str,
     options: &Options<'_>,
     boundaries: bool,
+    mapped: bool,
 ) -> crate::blocks::Output {
     // Comrak normalizes these too. Normalize before healing so source positions
     // and the writing offset use the same line endings and BOM convention.
@@ -74,7 +75,20 @@ pub(crate) fn render_with_blocks(
         crate::heal::heal_streaming(md)
     };
     let arena = Arena::new();
-    let root = parse_document(&arena, &source, options);
+    let (root, mapping) = if mapped {
+        let (root, leaves) = comrak::parse_document_with_source_map(&arena, &source, options);
+        (
+            root,
+            Some(crate::source_map::SourceMap::new(
+                &source,
+                leaves,
+                md.encode_utf16().count(),
+                options.parse.sourcepos_chars,
+            )),
+        )
+    } else {
+        (parse_document(&arena, &source, options), None)
+    };
     let mut lines = vec![0];
     lines.extend(source.match_indices('\n').map(|(i, _)| i + 1));
     let offset = |pos: comrak::nodes::LineColumn| {
@@ -150,7 +164,7 @@ pub(crate) fn render_with_blocks(
         }
     }
     if has_footnotes {
-        let mut output = crate::blocks::render(root, options, boundaries);
+        let mut output = crate::blocks::render(root, options, boundaries, mapping.as_ref());
         let end = output.html.trim_end_matches('\n').len();
         output.insert(end, CURSOR);
         return output;
@@ -231,7 +245,7 @@ pub(crate) fn render_with_blocks(
         _ => node.insert_after(marker),
     }
     drop(data);
-    let mut output = crate::blocks::render(root, options, boundaries);
+    let mut output = crate::blocks::render(root, options, boundaries, mapping.as_ref());
     if !cursor_in_code {
         output.strip_cursor_linebreaks();
     }

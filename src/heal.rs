@@ -35,12 +35,12 @@ pub fn heal_markdown(input: &str) -> String {
     if inline_start > 0 {
         let split = inline_start;
         let mut last_para = buf[split..].to_string();
-        heal_inline_markup(&mut last_para);
+        heal_inline_markup(&mut last_para, false);
         buf.truncate(split);
         buf.push_str(&last_para);
     } else {
         // Single paragraph — heal the whole thing
-        heal_inline_markup(&mut buf);
+        heal_inline_markup(&mut buf, false);
     }
 
     buf
@@ -60,7 +60,7 @@ pub(crate) fn heal_streaming(input: &str) -> String {
         .map_or(0, |i| i + 2)
         .max(last_closed_fence_end(&buf).unwrap_or(0));
     let mut tail = buf.split_off(start);
-    heal_inline_markup(&mut tail);
+    heal_inline_markup(&mut tail, true);
     buf.push_str(&tail);
     buf
 }
@@ -289,7 +289,7 @@ fn append_closing_delimiter(buf: &mut String, delimiter: &str) {
     buf.push_str(delimiter);
 }
 
-fn heal_inline_markup(buf: &mut String) {
+fn heal_inline_markup(buf: &mut String, append_only: bool) {
     // Mixed incomplete delimiters can cross on the first pass. Re-run the
     // bounded set of append-only healers until their output reaches a fixed
     // point so calling `heal_markdown` again cannot add more closers.
@@ -299,7 +299,7 @@ fn heal_inline_markup(buf: &mut String) {
         heal_bold(buf);
         heal_italic_double_underscore(buf);
         heal_italic_asterisk(buf);
-        heal_italic_underscore(buf);
+        heal_italic_underscore(buf, append_only);
         heal_inline_code(buf);
         heal_strikethrough(buf);
         if buf.len() == original_len {
@@ -537,7 +537,7 @@ fn heal_italic_asterisk(buf: &mut String) {
     }
 }
 
-fn heal_italic_underscore(buf: &mut String) {
+fn heal_italic_underscore(buf: &mut String, append_only: bool) {
     // Count single _ not part of __
     let mut count = 0;
     let mut last_end = None;
@@ -580,6 +580,13 @@ fn heal_italic_underscore(buf: &mut String) {
         i += 1;
     }
     if count % 2 == 1 && has_meaningful_content_after(buf, last_end) {
+        if append_only {
+            // Streaming source positions must still refer to the original
+            // input. Inserting before a real newline makes synthetic text
+            // look user-owned and prevents the AST cleanup from removing it.
+            append_closing_delimiter(buf, "_");
+            return;
+        }
         // Insert _ before trailing newlines
         let trimmed_end = buf.trim_end_matches('\n').len();
         let trailing_newlines = buf.split_off(trimmed_end);
