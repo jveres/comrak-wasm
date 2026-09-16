@@ -303,13 +303,16 @@ fn close_raw_html(block: &mut comrak::nodes::NodeHtmlBlock, options: &Options<'_
     if !options.render.r#unsafe || options.render.escape {
         return;
     }
+    // Compatibility with the deprecated option still exposed by the JS API.
+    #[allow(deprecated)]
+    let tagfilter = options.extension.tagfilter;
     let closer = match block.block_type {
         1 => {
             let start = block.literal.trim_start().to_ascii_lowercase();
             ["pre", "script", "style", "textarea"]
                 .into_iter()
                 .find(|tag| start.strip_prefix('<').is_some_and(|s| s.starts_with(tag)))
-                .filter(|tag| !options.extension.tagfilter || *tag == "pre")
+                .filter(|tag| !tagfilter || *tag == "pre")
                 .map(|tag| format!("</{tag}>"))
         }
         2 => Some("-->".to_string()),

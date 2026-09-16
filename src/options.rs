@@ -195,7 +195,12 @@ fn build(opts: ComrakOptions) -> Result<comrak::Options<'static>, JsValue> {
             };
         }
         set_bool!(strikethrough);
-        set_bool!(tagfilter);
+        // Preserve the JS compatibility option until an explicit removal.
+        // This is not a sanitizer; Comrak plans to remove it in 0.56.
+        #[allow(deprecated)]
+        if let Some(value) = ext.tagfilter {
+            options.extension.tagfilter = value;
+        }
         set_bool!(table);
         set_bool!(autolink);
         set_bool!(tasklist);

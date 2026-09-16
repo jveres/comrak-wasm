@@ -23,11 +23,21 @@ struct Span {
 }
 
 #[derive(Serialize, Default)]
+pub struct JsonAttributes {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    classes: Vec<String>,
+    pairs: Vec<(String, String)>,
+}
+
+#[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonNode {
     #[serde(rename = "type")]
     node_type: &'static str,
     sourcepos: Span,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attributes: Option<JsonAttributes>,
     #[serde(skip_serializing_if = "Option::is_none")]
     literal: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -243,6 +253,11 @@ pub fn json_of<'a>(node: &'a AstNode<'a>) -> JsonNode {
             out.info = Some(b.info.clone());
         }
     }
+    out.attributes = data.attrs.as_ref().map(|attrs| JsonAttributes {
+        id: attrs.id.clone(),
+        classes: attrs.classes.clone(),
+        pairs: attrs.pairs.clone(),
+    });
     out
 }
 

@@ -3,6 +3,7 @@
 
 export interface ExtensionOptions {
 	strikethrough?: boolean;
+	/** @deprecated Upstream plans removal in Comrak 0.56. Not an HTML sanitizer. */
 	tagfilter?: boolean;
 	table?: boolean;
 	autolink?: boolean;
@@ -47,22 +48,22 @@ export interface ExtensionOptions {
 	blockDirective?: boolean;
 	/**
 	 * Parses attributes attached to ATX and setext headings. Stock formatters
-	 * consume the syntax but do not expose or render the parsed attributes.
+	 * consume the syntax but do not render attributes; mdToAst exposes them.
 	 */
 	headerAttributes?: boolean;
 	/**
 	 * Parses attributes in fenced code block info strings. Stock formatters
-	 * consume the syntax but do not expose or render the parsed attributes.
+	 * consume the syntax but do not render attributes; mdToAst exposes them.
 	 */
 	fencedCodeAttributes?: boolean;
 	/**
 	 * Parses attributes following inline code spans. Stock formatters consume
-	 * the syntax but do not expose or render the parsed attributes.
+	 * the syntax but do not render attributes; mdToAst exposes them.
 	 */
 	inlineCodeAttributes?: boolean;
 	/**
 	 * Parses attributes following links and images. Stock formatters consume the
-	 * syntax but do not expose or render the parsed attributes.
+	 * syntax but do not render attributes; mdToAst exposes them.
 	 */
 	linkAttributes?: boolean;
 }
@@ -217,16 +218,25 @@ export interface AstPoint {
 	column: number;
 }
 
+/** Parsed attribute data, not sanitized HTML attributes. */
+export interface AstAttributes {
+	/** Last explicitly parsed #id, omitted when absent. */
+	id?: string;
+	/** Classes in source order, including duplicates. */
+	classes: string[];
+	/** Key/value pairs in source order, including duplicate keys. Untrusted data. */
+	pairs: [string, string][];
+}
+
 /**
- * One AST node as plain JSON. `type` is comrak's node kind in
- * camelCase ("document", "paragraph", "heading", "text", "strong",
- * "softBreak", "lineBreak", "code", "link", …); the optional fields
- * carry that kind's payload (heading `level`, link `url`/`title`,
- * text/code `literal`, list `listType`/`start`/`tight`, …).
+ * One AST node as plain JSON. `type` is comrak's node kind in camelCase.
+ * Optional fields carry the node's payload; absent attributes stay omitted.
  */
 export interface AstNode {
 	type: string;
 	sourcepos: { start: AstPoint; end: AstPoint };
+	/** Present only when an enabled attribute extension parses attributes. */
+	attributes?: AstAttributes;
 	literal?: string;
 	level?: number;
 	setext?: boolean;

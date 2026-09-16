@@ -5,6 +5,16 @@ Things to re-check whenever the `comrak` dependency is bumped
 comrak 0.54.0). Nothing here is filed upstream; check the changelog
 instead and retire entries as comrak grows the capability.
 
+Rechecked on September 16, 2026 for Comrak 0.55.0: the entries below still
+apply. The autolink denial-of-service fixes do not change the backslash behavior.
+The inline parse API, HTML5 spelling, inline escaping, node variants, and
+CommonMark printer are unchanged. See the
+[0.55 upgrade report](comrak-0.55-upgrade.md) for coverage and measurements.
+
+Before upgrading to 0.56, decide how to preserve or remove the deprecated
+`extension.tagfilter` API. It remains functional in this release. It is not an
+HTML sanitizer, and consumers must not use it as one.
+
 1. **A public inline-only parse entry** (`parse_inlines` or similar).
    The inline parser (`parser::inlines::Subject::parse_inline`) is
    private; `parse_document` is the only parse entry. This package's

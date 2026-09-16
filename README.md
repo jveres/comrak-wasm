@@ -153,9 +153,37 @@ must be freed after their last use.
 ### Attribute options
 
 The bridge supports `headerAttributes`, `fencedCodeAttributes`,
-`inlineCodeAttributes`, and `linkAttributes`. Comrak's stock formatters consume
-the attribute syntax but do not render or expose the parsed attributes. Use
-these flags only when that lossy behavior is acceptable.
+`inlineCodeAttributes`, and `linkAttributes`. `mdToAst` exposes parsed attributes
+on headings, fenced code, inline code, links, and images. Stock HTML and
+CommonMark output still consume the syntax without rendering the attributes.
+
+The optional `attributes` object contains `id`, `classes`, and `pairs`.
+The last parsed ID wins; absent IDs are omitted. Classes and key/value pairs
+preserve source order and duplicates. Pairs are arrays, not an object keyed by
+untrusted attribute names. Nodes without parsed attributes omit the field.
+
+```typescript
+const ast = mdToAst('# Title {#intro .wide data-kind="note"}', {
+  extension: { headerAttributes: true },
+});
+ast.children?.[0]?.attributes;
+// { id: "intro", classes: ["wide"], pairs: [["data-kind", "note"]] }
+```
+
+Treat these values as untrusted data. Custom renderers must validate attribute
+names, values, and URLs before applying them to HTML. This API does not enable
+automatic attribute rendering or change existing HTML output.
+
+### Comrak 0.55 compatibility
+
+Version `0.4.0` vendors Comrak `0.55.0`, including both GFM autolink
+denial-of-service fixes. See the [upgrade report](docs/comrak-0.55-upgrade.md)
+for regression coverage and measurements.
+
+`extension.tagfilter` remains supported for compatibility but is deprecated
+upstream, with removal planned in Comrak `0.56.0`. It is not an HTML sanitizer.
+Keep raw HTML disabled for untrusted input, or sanitize the rendered output
+with an HTML sanitizer. This upgrade does not silently change the option.
 
 ## Use Plugins
 

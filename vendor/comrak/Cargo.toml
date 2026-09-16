@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "comrak"
-version = "0.54.0"
+version = "0.55.0"
 authors = [
     "Asherah Connor <ashe@kivikakk.ee>",
     "Brett Walker <github@digitalmoksha.com>",

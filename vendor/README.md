@@ -1,6 +1,6 @@
 # Comrak source provenance extension
 
-`comrak/` contains Comrak 0.54.0 from the Cargo registry with its BSD license
+`comrak/` contains Comrak 0.55.0 from the Cargo registry with its BSD license
 in `comrak/COPYING`. The wrapper uses this local dependency so a clean build
 does not rely on edits to a developer's Cargo cache.
 
@@ -19,3 +19,8 @@ spans into the opt-in HTML source-map contract.
 When updating Comrak, reapply this extension before text coalescing and run
 the source-map, streaming, and block-snapshot tests. The added API is a
 candidate for an upstream contribution rather than a separate Markdown parser.
+
+The 0.55.0 update preserves both extension files unchanged: the upstream
+release changes neither `src/lib.rs` nor `src/parser/mod.rs`. The autolink
+implementation and its upstream tests include the fixes from
+[GHSA-xg9p-p4jc-c46g](https://github.com/kivikakk/comrak/security/advisories/GHSA-xg9p-p4jc-c46g).

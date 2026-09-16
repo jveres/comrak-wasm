@@ -74,7 +74,7 @@ beforeAll(async () => {
 
 describe("core", () => {
 	test("comrakVersion returns the upgraded Comrak release", () => {
-		expect(comrakVersion()).toMatch(/^0\.54\./);
+		expect(comrakVersion()).toBe("0.55.0");
 	});
 
 	test("empty input", () => {
