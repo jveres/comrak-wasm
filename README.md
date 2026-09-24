@@ -486,10 +486,18 @@ and heading ID changes can invalidate earlier output. Boundaries identify
 rendered fragments, not stable Markdown source identities. Footnotes share one
 fragment so their section wrapper and numbering remain consistent.
 
-When raw HTML or HEEx can span AST boundaries, `blockEnds` is `null`. Parse that
-HTML as one tree. An empty document has an empty boundary array. If your own
-post-processing or hooks can create markup that spans fragments, use the
-whole-tree fallback for that output too.
+When an HTML or HEEx block can span AST boundaries, `blockEnds` is `null`.
+Parse that HTML as one tree. An empty document has an empty boundary array. If
+your own post-processing or hooks can create markup that spans fragments, use
+the whole-tree fallback for that output too.
+
+Inline raw HTML, such as `a<br>b` or `<kbd>`, keeps the boundaries.
+`rawHtmlBlocks` lists the indices of fragments that contain it. Sanitize and
+parse each of those fragments on its own; the other fragments hold only
+renderer-generated HTML. Parsing fragment by fragment keeps an unclosed inline
+tag, such as `<b>`, inside its block. Whole-document parsing would carry it
+into the following blocks. `rawHtmlBlocks` is `null` exactly when `blockEnds`
+is `null`.
 
 ### Source-mapped snapshots
 

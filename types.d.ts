@@ -530,9 +530,14 @@ export default function init(
 export interface HtmlBlockSnapshot {
 	html: string;
 	/** Exclusive UTF-16 ends of independently parseable HTML fragments.
-	 * Null when raw HTML requires parsing the whole document together.
+	 * Null when an HTML block requires parsing the whole document together.
 	 * Boundaries describe output, not stable Markdown-source identities. */
 	blockEnds: number[] | null;
+	/** Ascending indices of fragments holding inline raw HTML, such as `<br>`
+	 * or `<kbd>`. Sanitize and parse each on its own: an unclosed inline tag
+	 * then stays in its fragment instead of carrying into later blocks.
+	 * Null exactly when `blockEnds` is null. */
+	rawHtmlBlocks: number[] | null;
 }
 
 /** ANSI input to escaped HTML, not Markdown-to-terminal output.

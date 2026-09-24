@@ -14,6 +14,8 @@ use serde::Serialize;
 pub(crate) struct Output {
     pub html: String,
     ends: Option<Vec<usize>>,
+    /// Ascending indices into `ends` of fragments holding inline raw HTML.
+    raw: Vec<usize>,
 }
 
 #[derive(Serialize)]
@@ -21,6 +23,7 @@ pub(crate) struct Output {
 pub(crate) struct Snapshot {
     html: String,
     block_ends: Option<Vec<usize>>,
+    raw_html_blocks: Option<Vec<usize>>,
 }
 
 impl Output {
@@ -86,22 +89,33 @@ impl Output {
     pub fn snapshot(self) -> Snapshot {
         // JS slices strings by UTF-16 units, not UTF-8 bytes. Convert boundaries
         // in a single pass without reparsing or allocating each block string.
-        let block_ends = self.ends.map(|ends| {
-            let mut result = Vec::with_capacity(ends.len());
-            let mut previous = 0;
-            let mut units = 0;
-            for end in ends {
-                units += self.html[previous..end].encode_utf16().count();
-                if result.last() != Some(&units) && units > 0 {
-                    result.push(units);
+        // Empty fragments are dropped, so raw-HTML indices are renumbered.
+        let mut raw = self.raw.iter().peekable();
+        let (block_ends, raw_html_blocks) = match self.ends {
+            Some(ends) => {
+                let mut result = Vec::with_capacity(ends.len());
+                let mut raw_blocks = Vec::new();
+                let mut previous = 0;
+                let mut units = 0;
+                for (index, end) in ends.into_iter().enumerate() {
+                    units += self.html[previous..end].encode_utf16().count();
+                    if result.last() != Some(&units) && units > 0 {
+                        result.push(units);
+                    }
+                    if raw.next_if(|raw| **raw == index).is_some() && !result.is_empty() {
+                        raw_blocks.push(result.len() - 1);
+                    }
+                    previous = end;
                 }
-                previous = end;
+                raw_blocks.dedup();
+                (Some(result), Some(raw_blocks))
             }
-            result
-        });
+            None => (None, None),
+        };
         Snapshot {
             html: self.html,
             block_ends,
+            raw_html_blocks,
         }
     }
 }
@@ -123,6 +137,7 @@ struct Boundaries<'a> {
     length: &'a Cell<usize>,
     ends: Vec<usize>,
     footnotes: bool,
+    raw: Vec<usize>,
     mapping: Option<&'a crate::source_map::SourceMap<'a>>,
     annotations: Vec<(usize, usize, String, bool)>,
 }
@@ -152,6 +167,18 @@ fn record<'a>(
         None
     };
     let text = matches!(data.value, NodeValue::Text(_) | NodeValue::ShortCode(_));
+    if entering
+        && matches!(
+            data.value,
+            NodeValue::HtmlInline(_) | NodeValue::HeexInline(_)
+        )
+    {
+        // The fragment being written is the one after the recorded ends.
+        let fragment = context.user.ends.len();
+        if context.user.raw.last() != Some(&fragment) {
+            context.user.raw.push(fragment);
+        }
+    }
     let atomic = if entering && matches!(data.value, NodeValue::Math(_)) {
         context.user.mapping.map(|map| map.atomic(data.sourcepos))
     } else {
@@ -205,23 +232,25 @@ pub(crate) fn render<'a>(
     boundaries: bool,
     mapping: Option<&crate::source_map::SourceMap<'_>>,
 ) -> Output {
-    // Literal HTML can span AST siblings or trigger browser tree repair. Only
-    // whole-tree parsing preserves that context. Escaped raw HTML is safe but
-    // conservatively takes the same fallback; callers never guess boundaries.
+    // An HTML block can open an element that later siblings close, so only
+    // whole-tree parsing preserves its context. Inline raw HTML stays inside
+    // its block's element; those fragments are listed for callers to parse
+    // on their own. Escaped raw HTML is safe but is treated the same way.
     let independent = boundaries
         && !root.descendants().any(|node| {
             matches!(
                 node.data.borrow().value,
-                NodeValue::HtmlBlock(_)
-                    | NodeValue::HtmlInline(_)
-                    | NodeValue::HeexBlock(_)
-                    | NodeValue::HeexInline(_)
+                NodeValue::HtmlBlock(_) | NodeValue::HeexBlock(_)
             )
         });
     if !independent && mapping.is_none() {
         let mut html = String::new();
         comrak::format_html(root, options, &mut html).expect("writing HTML to a String");
-        return Output { html, ends: None };
+        return Output {
+            html,
+            ends: None,
+            raw: Vec::new(),
+        };
     }
     let length = Cell::new(0);
     let mut writer = Writer {
@@ -238,6 +267,7 @@ pub(crate) fn render<'a>(
             length: &length,
             ends: Vec::new(),
             footnotes: false,
+            raw: Vec::new(),
             mapping,
             annotations: Vec::new(),
         },
@@ -249,6 +279,7 @@ pub(crate) fn render<'a>(
     let mut output = Output {
         html: writer.html,
         ends: independent.then_some(state.ends),
+        raw: state.raw,
     };
     let inserts = state
         .annotations

@@ -66,17 +66,47 @@ describe("HTML block snapshots", () => {
 
 	test.each([
 		"<div>\n\ninside\n\n</div>",
-		"Before <span>raw</span> after",
-		"<table>\ntext\n</table>",
-	])(
-		"declines independent boundaries for context-sensitive HTML: %j",
-		(source) => {
-			expect(mdToHtmlBlocks(source, options).blockEnds).toBeNull();
-			expect(
-				mdToStreamingHtmlBlocks(source, source.length, options).blockEnds,
-			).toBeNull();
-		},
-	);
+		"Before\n\n<table>\ntext\n</table>",
+		"a <b>x\n\n<div>\n\ny</div>",
+	])("declines independent boundaries for HTML blocks: %j", (source) => {
+		for (const snapshot of [
+			mdToHtmlBlocks(source, options),
+			mdToStreamingHtmlBlocks(source, source.length, options),
+		]) {
+			expect(snapshot.blockEnds).toBeNull();
+			expect(snapshot.rawHtmlBlocks).toBeNull();
+		}
+	});
+
+	test.each([
+		{ source: "Before <span>raw</span> after", raw: [0] },
+		{ source: "# Title\n\na<br>b\n\n- <kbd>x</kbd>\n\nplain", raw: [1, 2] },
+		{ source: "| A |\n| - |\n| x<br>y |\n\nEnd", raw: [0] },
+		{ source: "Note[^a].\n\n[^a]: <b>bold</b>", raw: [1] },
+		{ source: "No HTML: a < b and `<span>`", raw: [] },
+	])("lists fragments with inline raw HTML: $source", ({ source, raw }) => {
+		for (const snapshot of [
+			mdToHtmlBlocks(source, options),
+			mdToStreamingHtmlBlocks(source, source.length, options),
+		]) {
+			const blocks = fragments(snapshot);
+			expect(blocks?.join("")).toBe(snapshot.html);
+			expect(snapshot.rawHtmlBlocks).toEqual(raw);
+			for (const [index, block] of (blocks ?? []).entries()) {
+				expect(/<(span|br|kbd|b)>/.test(block)).toBe(raw.includes(index));
+			}
+		}
+	});
+
+	test("keeps an unclosed inline tag inside its own fragment", () => {
+		const source = "a <b>bold\n\nnext";
+		const snapshot = mdToHtmlBlocks(source, options);
+		expect(snapshot.rawHtmlBlocks).toEqual([0]);
+		expect(fragments(snapshot)).toEqual([
+			"<p>a <b>bold</p>\n",
+			"<p>next</p>\n",
+		]);
+	});
 
 	test("reports changed earlier output when a reference definition arrives", () => {
 		const first = "[early][ref]\n\nTail";
