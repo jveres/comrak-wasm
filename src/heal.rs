@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 pub fn heal_markdown(input: &str) -> String {
-    let last_line = input.rsplit('\n').next().unwrap_or("").trim();
-    let needs_setext_healing = input.contains('\n') && matches!(last_line, "-" | "--" | "=" | "==");
+    let last_line = input.rsplit('\n').next().unwrap_or("");
+    let needs_setext_healing = input.contains('\n') && is_partial_setext(last_line);
     let has_healing_syntax = input
         .bytes()
         .any(|byte| matches!(byte, b'<' | b'[' | b'*' | b'_' | b'~' | b'`' | b'$'));
@@ -16,10 +16,8 @@ pub fn heal_markdown(input: &str) -> String {
     if !has_healing_syntax && !needs_setext_healing {
         return buf;
     }
-    // Block-level healers operate on the full text. Removing a marker can
-    // expose a trailing space.
+    // Block-level healers operate on the full text.
     heal_block_markup(&mut buf);
-    strip_single_trailing_space(&mut buf);
 
     // Inline formatting cannot span paragraphs or fenced code, so closing
     // delimiters belong to the text after the last of either.
@@ -50,13 +48,14 @@ fn inline_end(s: &str) -> usize {
     }
     let bytes = &s.as_bytes()[..end];
     let line = Line::new(bytes, line_start, end, usize::MAX);
-    if line.first == end || matches!(s[line_start..end].trim(), "-" | "--" | "=" | "==") {
+    if line.first == end || is_partial_setext(&s[line_start..end]) {
         return end;
     }
     let text = &bytes[line.first..];
-    let hashes = text.iter().take_while(|byte| **byte == b'#').count();
-    let empty_heading =
-        (1..=6).contains(&hashes) && text[hashes..].iter().all(u8::is_ascii_whitespace);
+    let empty_heading = is_atx_heading(text)
+        && text
+            .iter()
+            .all(|byte| *byte == b'#' || byte.is_ascii_whitespace());
     let empty_item = list_marker(bytes, line.first, end)
         .is_some_and(|(marker_end, spaces)| marker_end + spaces == end);
     if empty_heading || empty_item {
@@ -64,6 +63,11 @@ fn inline_end(s: &str) -> usize {
     } else {
         end
     }
+}
+
+/// A one- or two-character setext underline, which healing escapes.
+fn is_partial_setext(line: &str) -> bool {
+    matches!(line.trim(), "-" | "--" | "=" | "==")
 }
 
 /// Append-only healing for a visible writing cursor. Unfinished tags and
@@ -84,8 +88,22 @@ pub(crate) fn heal_streaming(input: &str) -> String {
 }
 
 /// Start of the text that inline healers may change.
-pub(crate) fn inline_start(s: &str) -> usize {
-    last_paragraph_start(s).max(analyze(s).last_closed_fence_end.unwrap_or(0))
+fn inline_start(s: &str) -> usize {
+    inline_start_of(s, &analyze(s))
+}
+
+fn inline_start_of(s: &str, structure: &Structure) -> usize {
+    last_paragraph_start(s).max(structure.last_closed_fence_end.unwrap_or(0))
+}
+
+/// Whether the text ends inside a fence, and where inline healing starts,
+/// from one structural scan.
+pub(crate) fn inline_region(s: &str) -> (bool, usize) {
+    let structure = analyze(s);
+    (
+        structure.open_fence.is_some(),
+        inline_start_of(s, &structure),
+    )
 }
 
 /// Strip a trailing single space but keep a two-space hard line break.
@@ -108,7 +126,7 @@ fn is_escaped(bytes: &[u8], pos: usize) -> bool {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Fence {
+struct Fence {
     marker: u8,
     length: usize,
     /// Indentation of the opening marker after any blockquote prefix.
@@ -456,9 +474,13 @@ fn fence_at(bytes: &[u8], i: usize, line_end: usize, open: Option<Fence>) -> boo
 
 /// Pair backtick runs of equal length within one paragraph. An unmatched
 /// opener stays literal, except in the final paragraph, where the healer is
-/// about to close it and everything after it is code.
+/// about to close it and everything after it is code. A backslash escapes
+/// only an opener's first backtick: inside a span, backslashes are literal,
+/// so a closer always counts in full.
 fn pair_code_spans(bytes: &[u8], paragraph: Range<usize>, last: bool, structure: &mut Structure) {
-    let mut runs = Vec::new();
+    // Each run as a closer (its full extent) and as an opener (without an
+    // escaped first backtick).
+    let mut runs: Vec<(Range<usize>, usize)> = Vec::new();
     let mut i = paragraph.start;
     while i < paragraph.end {
         if bytes[i] != b'`' {
@@ -467,28 +489,31 @@ fn pair_code_spans(bytes: &[u8], paragraph: Range<usize>, last: bool, structure:
         }
         let start = i;
         i += run_length(bytes, i).min(paragraph.end - i);
-        let start = start + usize::from(is_escaped(bytes, start));
-        if start < i {
-            runs.push(start..i);
-        }
+        runs.push((start..i, start + usize::from(is_escaped(bytes, start))));
     }
     if runs.is_empty() {
         return;
     }
 
-    let mut next_same = vec![None; runs.len()];
+    // The next run whose full length matches each opener's length.
+    let mut next_closer = vec![None; runs.len()];
     let mut seen = HashMap::new();
-    for (index, run) in runs.iter().enumerate().rev() {
-        next_same[index] = seen.insert(run.len(), index);
+    for (index, (run, opener_start)) in runs.iter().enumerate().rev() {
+        next_closer[index] = seen.get(&(run.end - opener_start)).copied();
+        seen.insert(run.len(), index);
     }
     let mut index = 0;
     while index < runs.len() {
-        if let Some(closer) = next_same[index] {
-            structure.code.push(runs[index].start..runs[closer].end);
+        let (run, opener_start) = runs[index].clone();
+        if opener_start == run.end {
+            // A lone escaped backtick is literal text.
+            index += 1;
+        } else if let Some(closer) = next_closer[index] {
+            structure.code.push(opener_start..runs[closer].0.end);
             index = closer + 1;
         } else if last {
-            structure.unclosed_span = Some((runs[index].len(), runs[index].end));
-            structure.code.push(runs[index].start..paragraph.end);
+            structure.unclosed_span = Some((run.end - opener_start, run.end));
+            structure.code.push(opener_start..paragraph.end);
             return;
         } else {
             index += 1;
@@ -506,7 +531,7 @@ fn literal_ranges(s: &str, structure: &Structure) -> Option<Vec<Range<usize>>> {
     // heal_inline_code leaves an opener without content literal.
     let open_span_has_content = structure
         .unclosed_span
-        .map(|(_, opener_end)| has_code_content(&bytes[opener_end..]));
+        .map(|(_, opener_end)| has_content(&s[opener_end..], &['$']));
     if open_span_has_content == Some(true)
         || structure
             .markers
@@ -557,14 +582,6 @@ fn literal_ranges(s: &str, structure: &Structure) -> Option<Vec<Range<usize>>> {
     Some(merge(ranges))
 }
 
-/// Whether text after a code-span opener is worth closing the span for.
-/// Delimiters are not content, and neither is `$`: a later math closer must
-/// not turn a literal backtick into a code span.
-fn has_code_content(rest: &[u8]) -> bool {
-    rest.iter()
-        .any(|byte| !byte.is_ascii_whitespace() && !b"*_~`$".contains(byte))
-}
-
 fn starts_url(bytes: &[u8], i: usize) -> bool {
     let boundary = i == 0
         || matches!(
@@ -613,7 +630,7 @@ impl<'a> Skip<'a> {
     }
 }
 
-pub(crate) fn unclosed_fence(s: &str) -> Option<Fence> {
+fn unclosed_fence(s: &str) -> Option<Fence> {
     analyze(s).open_fence
 }
 
@@ -623,7 +640,7 @@ pub(crate) fn unclosed_inline_code(s: &str) -> Option<(usize, usize)> {
 
 /// Start of the text after the last blank line, which may hold whitespace
 /// and blockquote markers.
-pub(crate) fn last_paragraph_start(s: &str) -> usize {
+fn last_paragraph_start(s: &str) -> usize {
     let blank = |line: &str| {
         let bytes = line.as_bytes();
         Line::new(bytes, 0, bytes.len(), usize::MAX).is_blank(bytes)
@@ -669,13 +686,14 @@ fn delimiter_stats(s: &str, delim: &str, skip: &[Range<usize>]) -> (usize, Optio
     (count, last_end)
 }
 
-fn has_meaningful_content(s: &str) -> bool {
+/// Whether `s` holds text besides whitespace, delimiters, and `ignored`.
+fn has_content(s: &str, ignored: &[char]) -> bool {
     s.chars()
-        .any(|c| !c.is_whitespace() && c != '*' && c != '_' && c != '~' && c != '`')
+        .any(|c| !c.is_whitespace() && !matches!(c, '*' | '_' | '~' | '`') && !ignored.contains(&c))
 }
 
 fn has_meaningful_content_after(s: &str, delimiter_end: Option<usize>) -> bool {
-    delimiter_end.is_some_and(|end| has_meaningful_content(&s[end..]))
+    delimiter_end.is_some_and(|end| has_content(&s[end..], &[]))
 }
 
 fn append_closing_delimiter(buf: &mut String, delimiter: &str) {
@@ -692,17 +710,20 @@ fn heal_inline_markup(buf: &mut String) {
     // bounded set of append-only healers until their output reaches a fixed
     // point so calling `heal_markdown` again cannot add more closers. Code
     // spans go first and math second: emphasis closers must land after
-    // them rather than inside an open span or display block.
+    // them rather than inside an open span or display block. Each healer
+    // scans the text again because the one before it may have appended a
+    // closer that changes code spans or markers.
     for _ in 0..8 {
         let original_len = buf.len();
         heal_inline_code(buf);
         heal_math(buf);
-        heal_bold_italic(buf);
-        heal_bold(buf);
-        heal_italic_double_underscore(buf);
-        heal_italic_asterisk(buf);
-        heal_italic_underscore(buf);
-        heal_strikethrough(buf);
+        for delimiter in ["***", "**", "__"] {
+            heal_paired_delimiter(buf, delimiter);
+        }
+        for marker in [b'*', b'_'] {
+            heal_single_marker(buf, marker);
+        }
+        heal_paired_delimiter(buf, "~~");
         if buf.len() == original_len {
             break;
         }
@@ -719,6 +740,9 @@ fn heal_block_markup(buf: &mut String) {
         heal_setext(buf);
         heal_links(buf, false);
         heal_html_tag(buf);
+        // Removing a marker can expose a trailing space, which would hide
+        // an open fence's last line from heal_code_block.
+        strip_single_trailing_space(buf);
         heal_code_block(buf);
         if buf.len() == original_len {
             break;
@@ -814,7 +838,7 @@ fn heal_setext(buf: &mut String) {
         return;
     };
     let line_start = newline + 1;
-    let needs_fix = matches!(buf[line_start..].trim(), "-" | "--" | "=" | "==");
+    let needs_fix = is_partial_setext(&buf[line_start..]);
     if needs_fix && unclosed_fence(buf).is_none() {
         let offset = buf[line_start..]
             .find(|character: char| !character.is_whitespace())
@@ -869,7 +893,7 @@ fn heal_links(buf: &mut String, preserve_markers: bool) {
     if let Some(start) = destination {
         if !buf[start..].contains(')')
             && structure.open_fence.is_none()
-            && inline_start(buf) <= start
+            && inline_start_of(buf, &structure) <= start
         {
             append_closing_delimiter(buf, ")");
         }
@@ -915,22 +939,6 @@ fn heal_paired_delimiter(buf: &mut String, delimiter: &str) {
     }
 }
 
-fn heal_bold_italic(buf: &mut String) {
-    heal_paired_delimiter(buf, "***");
-}
-
-fn heal_bold(buf: &mut String) {
-    heal_paired_delimiter(buf, "**");
-}
-
-fn heal_italic_double_underscore(buf: &mut String) {
-    heal_paired_delimiter(buf, "__");
-}
-
-fn heal_strikethrough(buf: &mut String) {
-    heal_paired_delimiter(buf, "~~");
-}
-
 /// Count single emphasis markers that are not word-internal. Odd runs leave
 /// one single marker once their doubled markers pair up.
 fn single_marker_stats(buf: &str, marker: u8) -> (usize, Option<usize>) {
@@ -970,19 +978,10 @@ fn single_marker_stats(buf: &str, marker: u8) -> (usize, Option<usize>) {
     (count, last_end)
 }
 
-fn heal_italic_asterisk(buf: &mut String) {
-    let (count, last_end) = single_marker_stats(buf, b'*');
+fn heal_single_marker(buf: &mut String, marker: u8) {
+    let (count, last_end) = single_marker_stats(buf, marker);
     if count % 2 == 1 && has_meaningful_content_after(buf, last_end) {
-        append_closing_delimiter(buf, "*");
-    }
-}
-
-fn heal_italic_underscore(buf: &mut String) {
-    let (count, last_end) = single_marker_stats(buf, b'_');
-    if count % 2 == 1 && has_meaningful_content_after(buf, last_end) {
-        // heal_markdown splits trailing newlines off first; streaming source
-        // positions must refer to the original input, so both only append.
-        append_closing_delimiter(buf, "_");
+        append_closing_delimiter(buf, char::from(marker).encode_utf8(&mut [0; 4]));
     }
 }
 
@@ -992,20 +991,20 @@ fn heal_inline_code(buf: &mut String) {
         return;
     }
     if let Some((run, opener_end)) = structure.unclosed_span {
-        if has_code_content(&buf.as_bytes()[opener_end..]) {
-            let trimmed_end = buf.trim_end_matches('\n').len();
-            let trailing_newlines = buf.split_off(trimmed_end);
+        // `$` is not content either: a later math closer must not turn a
+        // literal backtick into a code span.
+        if has_content(&buf[opener_end..], &['$']) {
             let unhealed_len = buf.len();
             if buf.ends_with('`') {
                 // Keep a mismatched trailing run separate from the closer.
                 buf.push(' ');
             }
-            append_closing_delimiter(buf, &"`".repeat(run));
+            // Backslashes are literal inside a code span: no escape to skip.
+            buf.push_str(&"`".repeat(run));
             if run >= 3 && unclosed_fence(buf).is_some() {
                 // The closer would open a fence on an otherwise empty line.
                 buf.truncate(unhealed_len);
             }
-            buf.push_str(&trailing_newlines);
         }
     }
 }
@@ -1017,11 +1016,8 @@ fn heal_math(buf: &mut String) {
         if buf.ends_with('$') && !buf.ends_with("$$") {
             buf.push('$');
         } else {
-            // Block math: add newline if content has newlines
-            if !buf.ends_with('\n') {
-                buf.push('\n');
-            }
-            buf.push_str("$$");
+            // Display math closes on its own line.
+            buf.push_str("\n$$");
         }
     }
 }
@@ -1483,6 +1479,17 @@ mod tests {
         assert_eq!(heal_markdown("a `b\n---\n**c"), "a `b\n---\n**c**");
     }
     #[test]
+    fn backslashes_inside_code_spans_are_literal() {
+        // Only an opener's first backtick can be escaped.
+        for input in ["Use `C:\\` drive", "a `a\\`", "`\\`"] {
+            assert_eq!(heal_markdown(input), input, "input: {input:?}");
+        }
+        assert_eq!(heal_markdown("\\`not code"), "\\`not code");
+        assert_eq!(heal_markdown("x \\``code"), "x \\``code`");
+        assert_eq!(heal_markdown("Use `C:\\"), "Use `C:\\`");
+        assert_eq!(heal_markdown("`a\\"), "`a\\`");
+    }
+    #[test]
     fn tabs_indent_to_four_column_stops() {
         // A tab-indented line stays inside the list item's fence.
         let fenced = "- item\n\n  ```\n\tcode\n  `";
@@ -1553,6 +1560,8 @@ mod tests {
             "*\n]```https://x.co/_a* $$*~~\n*   ",
             "&__\n][*```>plain]   \n> ",
             "___\\](*plain~~~",
+            ">``````* \thttps://x.co/_a<   >\n [",
+            "> - ~~~$$https://x.co/_a好&~~~plain* __$$(>\n [",
         ] {
             let healed = heal_markdown(input);
             assert_eq!(heal_markdown(&healed), healed, "input: {input:?}");

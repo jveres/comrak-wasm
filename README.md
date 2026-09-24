@@ -529,8 +529,10 @@ The lexical spans come from the small extension described in
 ## Heal Streaming Markdown
 
 `healMarkdown` closes common incomplete constructs produced during streamed
-generation. Its output is idempotent: healing an already healed string does not
-change it again.
+generation. Its output is idempotent for ordinary Markdown: healing an already
+healed string does not change it again. Rare combinations of a removed bracket
+and a link destination can still heal differently a second time; streaming
+never heals its own output.
 
 ````typescript
 import { healMarkdown } from "comrak-wasm";

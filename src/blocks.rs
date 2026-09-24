@@ -233,9 +233,10 @@ pub(crate) fn render<'a>(
     mapping: Option<&crate::source_map::SourceMap<'_>>,
 ) -> Output {
     // An HTML block can open an element that later siblings close, so only
-    // whole-tree parsing preserves its context. Inline raw HTML stays inside
-    // its block's element; those fragments are listed for callers to parse
-    // on their own. Escaped raw HTML is safe but is treated the same way.
+    // whole-tree parsing preserves its context. Inline raw HTML is listed
+    // per fragment instead: parsed on their own, those fragments keep an
+    // unclosed inline tag inside their block. Escaped raw HTML is safe but
+    // is treated the same way.
     let independent = boundaries
         && !root.descendants().any(|node| {
             matches!(

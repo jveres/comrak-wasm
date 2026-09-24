@@ -51,8 +51,7 @@ pub(crate) fn render_with_blocks(
     } else {
         md
     };
-    let open_fence = crate::heal::unclosed_fence(md).is_some();
-    let inline_start = crate::heal::inline_start(md);
+    let (open_fence, inline_start) = crate::heal::inline_region(md);
     let inline = (!open_fence)
         .then(|| crate::heal::unclosed_inline_code(&md[inline_start..]))
         .flatten();

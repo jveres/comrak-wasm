@@ -123,10 +123,9 @@ pub trait Formatter {
             out.push('-');
             self.style_end(out, "list_bullet");
             out.push(' ');
-            out.push_str(if checked { "[x] " } else { "[ ] " });
-        } else {
-            out.push_str(if checked { "☒ " } else { "☐ " });
         }
+        out.push_str(task_checkbox(self.show_markdown(), checked));
+        out.push(' ');
     }
 
     // --- Inline elements ---
@@ -477,17 +476,20 @@ fn walk_inline<'a, F: Formatter>(
     }
 }
 
+fn task_checkbox(show_markdown: bool, checked: bool) -> &'static str {
+    match (show_markdown, checked) {
+        (true, true) => "[x]",
+        (true, false) => "[ ]",
+        (false, true) => "☒",
+        (false, false) => "☐",
+    }
+}
+
 fn render_cell_styled<'a, F: Formatter>(cell_node: &'a AstNode<'a>, out: &mut String, fmt: &F) {
     for child in cell_node.children() {
         // `parse.tasklistInTable` puts a block-level task item in the cell.
         if let NodeValue::TaskItem(task) = &child.data.borrow().value {
-            let checked = task.symbol.is_some();
-            out.push_str(match (fmt.show_markdown(), checked) {
-                (true, true) => "[x]",
-                (true, false) => "[ ]",
-                (false, true) => "☒",
-                (false, false) => "☐",
-            });
+            out.push_str(task_checkbox(fmt.show_markdown(), task.symbol.is_some()));
             if child.children().next().is_some() {
                 out.push(' ');
                 render_cell_styled(child, out, fmt);
