@@ -1,10 +1,8 @@
 /**
  * Shiki + Comrak WASM — Syntax Highlighting Example
  *
- * Usage:
- *   cd examples/shiki
- *   npm install
- *   npm start
+ * Usage (from the repository root, after `pnpm install` and `pnpm run build`):
+ *   pnpm run shiki
  */
 
 import { readFile, writeFile } from "node:fs/promises";

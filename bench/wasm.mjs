@@ -44,6 +44,8 @@ const JSON_OUTPUT_ENV = "COMRAK_BENCH_JSON";
  * @property {() => string} comrakVersion
  * @property {(markdown: string) => string} healMarkdown
  * @property {(markdown: string, options?: ComrakOptions | null) => string} mdToHtml
+ * @property {(markdown: string, options?: ComrakOptions | null, sourceMap?: boolean) => {html: string}} mdToHtmlBlocks
+ * @property {(markdown: string, writingOffset: number, options?: ComrakOptions | null, sourceMap?: boolean) => {html: string}} mdToStreamingHtmlBlocks
  * @property {(markdown: string, options?: ComrakOptions | null, showUrls?: boolean, showMarkdown?: boolean, tableShadow?: string) => string} mdToText
  * @property {(markdown: string, options?: ComrakOptions | null, theme?: AnsiTheme | null) => string} mdToAnsi
  * @property {(markdown: string, options?: ComrakOptions | null, syntaxHighlighter?: Freeable | null, headingAdapter?: Freeable | null) => string} mdToHtmlWithPlugins
@@ -231,6 +233,42 @@ function makeHeadingInput(count) {
 		{ length: count },
 		(_, index) => `${"#".repeat((index % 6) + 1)} Heading ${index}`,
 	).join("\n\n");
+}
+
+/**
+ * @param {number} count
+ * @returns {string}
+ */
+function makeParagraphInput(count) {
+	return Array.from(
+		{ length: count },
+		(_, index) =>
+			`Para ${index} with **bold** and *em* and \`code\` [l](http://x/${index}).`,
+	).join("\n\n");
+}
+
+/**
+ * Many inline code spans and math spans, each annotated by the source map.
+ * @param {number} count
+ * @returns {string}
+ */
+function makeCodeSpanInput(count) {
+	return Array.from(
+		{ length: count },
+		(_, index) => `p${index} \`a\` \`b\` \`c\` $x$ $$y$$ \`d\``,
+	).join("\n\n");
+}
+
+/**
+ * Non-ASCII lines, so character columns differ from byte columns.
+ * @param {number} count
+ * @returns {string}
+ */
+function makeUnicodeInput(count) {
+	return Array.from(
+		{ length: count },
+		(_, index) => `Ünïcödé ${index} **bølđ** ☃ \`ćødé\` ${"é".repeat(200)} *x*`,
+	).join("\n");
 }
 
 /**
@@ -469,6 +507,8 @@ async function main() {
 		HeadingAdapter,
 		initSync,
 		mdToHtml,
+		mdToHtmlBlocks,
+		mdToStreamingHtmlBlocks,
 		mdToHtmlWithCodefenceRenderers,
 		mdToHtmlWithPlugins,
 		mdToText,
@@ -504,6 +544,13 @@ async function main() {
 	const largePlainMarkdown = "a".repeat(256 * KIB);
 	const fences = makeFenceInput(1_000);
 	const headings = makeHeadingInput(1_000);
+	const paragraphs = makeParagraphInput(8_000);
+	const codeSpans = makeCodeSpanInput(4_000);
+	const unicodeLines = makeUnicodeInput(2_000);
+	/** @type {ComrakOptions} */
+	const mathOptions = { extension: { mathDollars: true } };
+	/** @type {ComrakOptions} */
+	const charColumnOptions = { parse: { sourceposChars: true } };
 	const tableResult = benchmark(
 		{
 			name: "mdToText/table/1000x10",
@@ -746,6 +793,30 @@ async function main() {
 			iterations: LARGE_CASE_ITERATIONS,
 			run: () =>
 				mdToHtmlWithPlugins(headings, undefined, undefined, headingAdapter),
+		},
+		{
+			name: "mdToHtml/8000-paragraphs",
+			input: paragraphs,
+			iterations: LARGE_CASE_ITERATIONS,
+			run: () => mdToHtml(paragraphs),
+		},
+		{
+			name: "mdToHtmlBlocks/source-map/4000-code-math",
+			input: codeSpans,
+			iterations: LARGE_CASE_ITERATIONS,
+			run: () => mdToHtmlBlocks(codeSpans, mathOptions, true).html,
+		},
+		{
+			name: "mdToStreamingHtmlBlocks/source-map/unicode-char-columns",
+			input: unicodeLines,
+			iterations: LARGE_CASE_ITERATIONS,
+			run: () =>
+				mdToStreamingHtmlBlocks(
+					unicodeLines,
+					unicodeLines.length,
+					charColumnOptions,
+					true,
+				).html,
 		},
 		{
 			name: "mdToHtml/mixed",

@@ -98,7 +98,11 @@ pub trait Formatter {
 
     fn alert_title(&self, out: &mut String, alert: &comrak::nodes::NodeAlert) {
         out.push('[');
-        self.write_literal(out, alert.title.as_deref().unwrap_or("Alert"));
+        let title = alert
+            .title
+            .as_deref()
+            .unwrap_or(alert.alert_type.default_title());
+        self.write_literal(out, title);
         out.push(']');
     }
 
@@ -740,8 +744,10 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
         NodeValue::Heading(h) => {
             if ctx.needs_newline {
                 ensure_newline(out);
+                write_quote_prefix(out, ctx, fmt);
                 out.push('\n');
             }
+            write_quote_prefix(out, ctx, fmt);
             fmt.heading_start(out, h.level);
             // showMarkdown: all levels get # prefix
             // otherwise: H1/H2 rely on styling; H3+ show # for hierarchy
@@ -811,6 +817,7 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
         NodeValue::CodeBlock(cb) => {
             if ctx.needs_newline {
                 ensure_newline(out);
+                write_quote_prefix(out, ctx, fmt);
                 out.push('\n');
             }
             fmt.code_block_start(out, &cb.info);
@@ -825,8 +832,10 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
         NodeValue::ThematicBreak => {
             if ctx.needs_newline {
                 ensure_newline(out);
+                write_quote_prefix(out, ctx, fmt);
                 out.push('\n');
             }
+            write_quote_prefix(out, ctx, fmt);
             fmt.thematic_break(out);
             ctx.needs_newline = true;
         }
@@ -856,13 +865,8 @@ fn walk<'a, F: Formatter>(node: &'a AstNode<'a>, out: &mut String, ctx: &mut Wal
         | NodeValue::DescriptionItem(_)
         | NodeValue::DescriptionTerm
         | NodeValue::DescriptionDetails
-        | NodeValue::Subtext => {
-            for child in node.children() {
-                walk(child, out, ctx, fmt);
-            }
-        }
-
-        NodeValue::BlockDirective(_) => {
+        | NodeValue::Subtext
+        | NodeValue::BlockDirective(_) => {
             for child in node.children() {
                 walk(child, out, ctx, fmt);
             }
@@ -1021,7 +1025,7 @@ mod tests {
             reset: Some("".into()),
             show_urls: Some(false),
             show_markdown: Some(false),
-            table_shadow: None,
+            table_shadow: Some(String::new()),
             hyperlinks: Some(false),
         };
         format_ansi(root, Some(theme))

@@ -52,10 +52,7 @@ pub(crate) fn render_with_blocks(
         md
     };
     let open_fence = crate::heal::unclosed_fence(md).is_some();
-    let inline_start = md
-        .rfind("\n\n")
-        .map_or(0, |i| i + 2)
-        .max(crate::heal::last_closed_fence_end(md).unwrap_or(0));
+    let inline_start = crate::heal::inline_start(md);
     let inline = (!open_fence)
         .then(|| crate::heal::unclosed_inline_code(&md[inline_start..]))
         .flatten();
@@ -89,35 +86,9 @@ pub(crate) fn render_with_blocks(
     } else {
         (parse_document(&arena, &source, options), None)
     };
-    let mut lines = vec![0];
-    lines.extend(source.match_indices('\n').map(|(i, _)| i + 1));
-    let offset = |pos: comrak::nodes::LineColumn| {
-        let start = lines
-            .get(pos.line.saturating_sub(1))
-            .copied()
-            .unwrap_or(source.len());
-        let column = pos.column.saturating_sub(1);
-        start
-            + if options.parse.sourcepos_chars {
-                source[start..]
-                    .char_indices()
-                    .nth(column)
-                    .map_or(source.len() - start + 1, |(byte, _)| byte)
-            } else {
-                column
-            }
-    };
-    let end_offset = |pos: comrak::nodes::LineColumn| {
-        let byte = offset(pos);
-        byte + if options.parse.sourcepos_chars {
-            source
-                .get(byte..)
-                .and_then(|s| s.chars().next())
-                .map_or(1, char::len_utf8)
-        } else {
-            1
-        }
-    };
+    let columns = crate::source_map::Columns::new(&source, options.parse.sourcepos_chars);
+    let offset = |pos| columns.offset(pos);
+    let end_offset = |pos| columns.end(pos);
     let base = if !open_fence && inline.is_none() && md.ends_with(' ') && !md.ends_with("  ") {
         &md[..md.len() - 1]
     } else {

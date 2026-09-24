@@ -218,8 +218,11 @@ fn remap(mapping: &str, slices: &[(usize, usize)]) -> Option<String> {
 
 /// Returns the consumed byte count and optional SGR parameters. Incomplete
 /// trailing sequences are consumed until a subsequent render completes them.
+/// A raw ESC is never returned as text: malformed sequences drop the bytes
+/// consumed so far (at least the ESC itself).
 fn sequence(text: &str, textual: bool) -> Option<(usize, Option<&str>)> {
-    let prefix = if text.starts_with("\x1b[") {
+    let raw_csi = text.starts_with("\x1b[");
+    let prefix = if raw_csi {
         Some(2)
     } else if textual {
         ["\\e[", "\\033[", "\\x1b[", "\\u001b[", "^[["]
@@ -232,7 +235,9 @@ fn sequence(text: &str, textual: bool) -> Option<(usize, Option<&str>)> {
     if let Some(prefix) = prefix {
         let bytes = text.as_bytes();
         let mut i = prefix;
-        while i < bytes.len() && (bytes[i].is_ascii_digit() || b";:?".contains(&bytes[i])) {
+        // CSI parameter bytes 0x30..=0x3F, including the private markers
+        // `<`, `=`, `>` and `?`.
+        while i < bytes.len() && (b'0'..=b'?').contains(&bytes[i]) {
             i += 1;
         }
         let params_end = i;
@@ -243,12 +248,13 @@ fn sequence(text: &str, textual: bool) -> Option<(usize, Option<&str>)> {
             return Some((i, None));
         }
         if (b'@'..=b'~').contains(&bytes[i]) {
-            return Some((
-                i + 1,
-                (bytes[i] == b'm').then_some(&text[prefix..params_end]),
-            ));
+            let params = &text[prefix..params_end];
+            // Only plain `CSI … m` is SGR; private-marker variants such as
+            // `CSI > 4 ; 2 m` are other controls and are dropped.
+            let sgr = bytes[i] == b'm' && !params.bytes().any(|b| (b'<'..=b'?').contains(&b));
+            return Some((i + 1, sgr.then_some(params)));
         }
-        return None;
+        return raw_csi.then_some((i, None));
     }
     if !text.starts_with('\x1b') {
         return None;
@@ -275,10 +281,21 @@ fn sequence(text: &str, textual: bool) -> Option<(usize, Option<&str>)> {
             return Some((i, None));
         }
     }
-    if (b'@'..=b'Z').contains(&bytes[1]) || (b'\\'..=b'_').contains(&bytes[1]) {
-        return Some((2, None));
+    // nF / Fp / Fe / Fs escapes: intermediate bytes 0x20..=0x2F followed by
+    // a final byte 0x30..=0x7E (e.g. `ESC ( B`, `ESC 7`, `ESC M`).
+    let mut i = 1;
+    while i < bytes.len() && (b' '..=b'/').contains(&bytes[i]) {
+        i += 1;
     }
-    None
+    if i == bytes.len() {
+        return Some((i, None));
+    }
+    if (b'0'..=b'~').contains(&bytes[i]) {
+        return Some((i + 1, None));
+    }
+    // Unrecognised byte after ESC: drop the ESC (and any intermediates) so
+    // no raw escape reaches the HTML, but keep the following text.
+    Some((i, None))
 }
 
 pub fn render(code: &str, textual: bool, mapping: Option<&str>) -> Output {

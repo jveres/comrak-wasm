@@ -723,6 +723,12 @@ describe("mdToInlineHtml", () => {
 		expect(() => mdToInlineHtml("one\n\ntwo", {})).toThrow();
 		expect(() => mdToInlineHtml("- item", {})).toThrow();
 	});
+
+	test("accepts the sourcepos attribute on the paragraph", () => {
+		expect(mdToInlineHtml("hello *x*", { render: { sourcepos: true } })).toBe(
+			'hello <em data-sourcepos="1:7-1:9">x</em>',
+		);
+	});
 });
 
 describe("mdToAst", () => {
@@ -761,7 +767,7 @@ describe("syntax highlighter", () => {
 	test("highlight callback invoked", () => {
 		const sh = new SyntaxHighlighter(
 			(code: string, lang: string) =>
-				`<span class="hl" data-lang="${lang ?? ""}">${code}</span>`,
+				`<span class="hl" data-lang="${lang}">${code}</span>`,
 			() => "<pre>",
 			() => "<code>",
 		);
@@ -1396,7 +1402,7 @@ describe("rewriters and plugins combined", () => {
 	test("rewriters, highlighter and codefence renderers compose in one render", () => {
 		const sh = new SyntaxHighlighter(
 			(code: string, lang: string) =>
-				`<span class="hl" data-lang="${lang ?? ""}">${code}</span>`,
+				`<span class="hl" data-lang="${lang}">${code}</span>`,
 			() => "<pre>",
 			() => "<code>",
 		);
@@ -1906,6 +1912,28 @@ describe("walker limits", () => {
 			);
 		},
 	);
+
+	test.each([
+		`${"> ".repeat(600)}deep`,
+		`${">".repeat(20_000)} x`,
+		Array.from({ length: 600 }, (_, depth) => `${"  ".repeat(depth)}- a`).join(
+			"\n",
+		),
+	])(
+		"AST output rejects excessive nesting and stays usable (%#)",
+		(markdown) => {
+			expect(() => mdToAst(markdown, {})).toThrow(
+				"markdown nesting exceeds the AST limit of 512",
+			);
+			expect(mdToHtml("hi", {})).toBe("<p>hi</p>\n");
+		},
+	);
+
+	test("AST output accepts nesting below the limit", () => {
+		const markdown = `${"> ".repeat(500)}deep`;
+
+		expect(mdToAst(markdown, {}).type).toBe("document");
+	});
 });
 
 // --- Heal Markdown ---
@@ -1954,7 +1982,7 @@ describe("heal", () => {
 	test("property: exposed HTML suffixes reach a fixed point in one call", () => {
 		fc.assert(
 			fc.property(fc.integer({ min: 1, max: 64 }), (tagCount) => {
-				const healed = healMarkdown(`start${"<a".repeat(tagCount)}`);
+				const healed = healMarkdown(`start ${"<a ".repeat(tagCount)}`);
 
 				expect(healed).toBe("start");
 				expect(healMarkdown(healed)).toBe(healed);
@@ -2087,6 +2115,79 @@ describe("heal", () => {
 	test("handles CJK characters with unclosed code", () => {
 		expect(healMarkdown("`代码")).toBe("`代码`");
 	});
+
+	test.each([
+		"use `**kwargs` to pass",
+		"the `$$` token",
+		"`arr[0` more",
+		"* item one",
+		"> * quoted",
+		"***\nfoo",
+		"see https://x.com/_private",
+		"if a<b then c",
+		"`Vec<String` is",
+		"*a\n  \nb",
+	])("leaves literal markup alone: %j", (input) => {
+		expect(healMarkdown(input)).toBe(input);
+	});
+
+	test.each([
+		["**bold `code", "**bold `code`**"],
+		["- *item", "- *item*"],
+		["[a](http://x/_y", "[a](http://x/_y)"],
+		['text <span class="a', "text"],
+		["a $$ b **c", "a $$ b **c\n$$**"],
+		["# `a\n*b `c", "# `a\n*b `c`*"],
+		["- ```\n  x\n\ny **z", "- ```\n  x\n\ny **z**"],
+		["- ```js\n  code", "- ```js\n  code\n  ```"],
+		["> ```js\n> code", "> ```js\n> code\n> ```"],
+		["```\ncode\n-", "```\ncode\n-\n```"],
+	])("heals %j inside its context", (input, expected) => {
+		expect(healMarkdown(input)).toBe(expected);
+	});
+
+	test("property: healing containers, code and URLs is idempotent", () => {
+		const fragment = fc.constantFrom(
+			"plain",
+			" ",
+			"\n",
+			"\n\n",
+			"*",
+			"**",
+			"_",
+			"__",
+			"~~",
+			"`",
+			"```",
+			"~~~",
+			"$$",
+			"[",
+			"](",
+			")",
+			"<a ",
+			"<",
+			"\\",
+			"- ",
+			"* ",
+			"> ",
+			"1. ",
+			"   ",
+			"https://x.co/_a",
+			"好",
+		);
+		const markdown = fc
+			.array(fragment, { maxLength: 32 })
+			.map((fragments) => fragments.join(""));
+
+		fc.assert(
+			fc.property(markdown, (input) => {
+				const healed = healMarkdown(input);
+
+				expect(healMarkdown(healed)).toBe(healed);
+			}),
+			{ numRuns: 2_000, seed: 20_260_924 },
+		);
+	});
 });
 
 // --- Frontmatter ---
@@ -2196,14 +2297,204 @@ describe("memory", () => {
 		expectBoundedWasmGrowth(() => healMarkdown(incomplete));
 	});
 
-	test("plugin rendering keeps Wasm high-water growth bounded", () => {
-		expectBoundedWasmGrowth(() => {
+	// Every JS callback a handle retains occupies an externref-table slot.
+	// The table grows but never shrinks, so a leaked slot per render shows
+	// up as table growth even when linear memory stays flat. initSync on an
+	// already-initialized module returns the live exports without compiling.
+	function getExternrefTableLength(): number {
+		const exports = initSync({ module: new Uint8Array() }) as unknown as {
+			__wbindgen_externrefs: WebAssembly.Table;
+		};
+		return exports.__wbindgen_externrefs.length;
+	}
+
+	function expectBoundedPluginGrowth(fn: () => void): void {
+		for (let i = 0; i < 10; i++) fn(); // warm up
+		const pagesBefore = getWasmPages();
+		const tableBefore = getExternrefTableLength();
+		for (let i = 0; i < 1000; i++) fn();
+		expect(getWasmPages() - pagesBefore).toBeLessThanOrEqual(1);
+		expect(getExternrefTableLength() - tableBefore).toBeLessThanOrEqual(16);
+	}
+
+	test("plugin rendering keeps Wasm memory and externref table bounded", () => {
+		expectBoundedPluginGrowth(() => {
 			const sh = new SyntaxHighlighter(
 				(code: string) => code,
 				() => "<pre>",
 				() => "<code>",
 			);
-			mdToHtmlWithPlugins(md, opts, sh);
+			try {
+				mdToHtmlWithPlugins(md, opts, sh);
+			} finally {
+				sh.free();
+			}
 		});
+	});
+
+	test("the externref probe detects handles that are never freed", () => {
+		const before = getExternrefTableLength();
+		const leaked = Array.from(
+			{ length: 1000 },
+			() =>
+				new SyntaxHighlighter(
+					(code: string) => code,
+					() => "<pre>",
+					() => "<code>",
+				),
+		);
+		expect(getExternrefTableLength() - before).toBeGreaterThan(1000);
+		for (const sh of leaked) sh.free();
+	});
+
+	test("CodefenceRenderer handles keep the externref table bounded", async () => {
+		const { CodefenceRenderer } = await import("comrak-wasm");
+		expectBoundedPluginGrowth(() => {
+			const renderer = new CodefenceRenderer((_lang, _meta, code) => code);
+			try {
+				mdToHtmlWithCodefenceRenderers(md, opts, { js: renderer });
+			} finally {
+				renderer.free();
+			}
+		});
+	});
+});
+
+describe("CodefenceRenderer handles in renderer maps", () => {
+	const fence = "```mermaid\ngraph TD\n```\n\n```js\nx\n```";
+	const render = (_lang: string, meta: string, code: string) =>
+		`<div class="m" data-meta="${meta}">${code.trim()}</div>`;
+
+	test("top-level entries accept handles next to callbacks and keep them usable", async () => {
+		const { CodefenceRenderer } = await import("comrak-wasm");
+		const mermaid = new CodefenceRenderer(render);
+		try {
+			const renderers = { mermaid, js: () => "<js/>" };
+			const expected = '<div class="m" data-meta="">graph TD</div><js/>';
+			expect(
+				mdToHtmlWithCodefenceRenderers(fence, null, renderers).replace(
+					/\n/g,
+					"",
+				),
+			).toBe(expected);
+			// The call cloned the handle; the caller's copy still renders.
+			expect(
+				mdToHtmlWithRewritersAndPlugins(
+					fence,
+					null,
+					null,
+					null,
+					null,
+					null,
+					renderers,
+				).replace(/\n/g, ""),
+			).toBe(expected);
+			const cloned = mermaid.clone();
+			cloned.free();
+		} finally {
+			mermaid.free();
+		}
+	});
+
+	test("PreparedCodefenceRenderers accepts handles without consuming them", async () => {
+		const { CodefenceRenderer } = await import("comrak-wasm");
+		const mermaid = new CodefenceRenderer(render);
+		const prepared = new PreparedCodefenceRenderers({ mermaid });
+		const options = new PreparedOptions(null);
+		try {
+			expect(options.mdToHtmlWithCodefenceRenderers(fence, prepared)).toContain(
+				'<div class="m" data-meta="">graph TD</div>',
+			);
+			expect(
+				mdToHtmlWithCodefenceRenderers(fence, null, { mermaid }),
+			).toContain('<div class="m" data-meta="">graph TD</div>');
+		} finally {
+			options.free();
+			prepared.free();
+			mermaid.free();
+		}
+	});
+
+	test("a prepared registry passed to a top-level entry gets a targeted error", () => {
+		const prepared = new PreparedCodefenceRenderers({ mermaid: render });
+		try {
+			const renderers = prepared as unknown as Record<string, () => string>;
+			for (const call of [
+				() => mdToHtmlWithCodefenceRenderers(fence, null, renderers),
+				() =>
+					mdToHtmlWithRewritersAndPlugins(
+						fence,
+						null,
+						null,
+						null,
+						null,
+						null,
+						renderers,
+					),
+			]) {
+				expect(call).toThrow(TypeError);
+				expect(call).toThrow(
+					/PreparedCodefenceRenderers handle is only accepted by PreparedOptions\.mdToHtmlWithCodefenceRenderers/,
+				);
+			}
+		} finally {
+			prepared.free();
+		}
+	});
+
+	test("other non-function values name both accepted kinds", () => {
+		expect(() =>
+			mdToHtmlWithCodefenceRenderers(fence, null, {
+				mermaid: 42 as unknown as () => string,
+			}),
+		).toThrow(
+			'codefence renderer for "mermaid" must be a Function or a CodefenceRenderer',
+		);
+	});
+});
+
+describe("text/ANSI rendering audit fixes", () => {
+	const alertOpts = { extension: { alerts: true } };
+	const tableOpts = { extension: { table: true } };
+	const table = "| a |\n|---|\n| b |";
+	const hr = "─".repeat(40);
+
+	test("should use the alert type's default title in text output", () => {
+		expect(mdToText("> [!NOTE]\n> hi", alertOpts)).toBe("[Note]\nhi");
+		expect(mdToText("> [!WARNING] Careful\n> hi", alertOpts)).toBe(
+			"[Careful]\nhi",
+		);
+	});
+
+	test("should not style the ANSI alert badge when reset is empty", () => {
+		expect(mdToAnsi("> [!NOTE]\n> hi", alertOpts, { reset: "" })).toBe(
+			" Note \nhi",
+		);
+	});
+
+	test("should not emit an orphan OSC 8 closer when reset is empty", () => {
+		const out = mdToAnsi(
+			"[a](http://x)",
+			{},
+			{ reset: "", hyperlinks: true, showUrls: false },
+		);
+		expect(out).not.toContain("\u001b]8;;");
+	});
+
+	test("should keep the default table shadow for partial themes", () => {
+		expect(mdToAnsi(table, tableOpts, {})).toContain("░");
+		expect(mdToAnsi(table, tableOpts, { tableShadow: "" })).not.toContain("░");
+	});
+
+	test("should keep the quote border on headings, breaks and code blocks", () => {
+		expect(mdToText("> # Title\n> body\n> ***\n> more")).toBe(
+			`│ Title\n│ \n│ body\n│ \n│ ${hr}\n│ \n│ more`,
+		);
+		expect(mdToText("> body\n>\n> ```\n> code\n> ```\n> after")).toBe(
+			"│ body\n│ \n│ code\n│ \n│ after",
+		);
+		const ansi = mdToAnsi("> ### H3\n> ***", {});
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: strip SGR
+		expect(ansi.replace(/\u001b\[[0-9;]*m/g, "")).toBe(`│ ### H3\n│ \n│ ${hr}`);
 	});
 });

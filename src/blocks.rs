@@ -35,6 +35,37 @@ impl Output {
         }
     }
 
+    /// Apply many insertions in one pass. Positions refer to the current HTML;
+    /// equal positions keep their order. Same boundary rule as [`Self::insert`].
+    fn insert_all(&mut self, mut inserts: Vec<(usize, String)>) {
+        if inserts.is_empty() {
+            return;
+        }
+        inserts.sort_by_key(|(index, _)| *index);
+        let extra: usize = inserts.iter().map(|(_, text)| text.len()).sum();
+        let mut html = String::with_capacity(self.html.len() + extra);
+        let mut last = 0;
+        for (index, text) in &inserts {
+            html.push_str(&self.html[last..*index]);
+            html.push_str(text);
+            last = *index;
+        }
+        html.push_str(&self.html[last..]);
+        self.html = html;
+        if let Some(ends) = &mut self.ends {
+            // Ends ascend, so one merge shifts each by the text inserted at or
+            // before it.
+            let mut pending = inserts.iter().peekable();
+            let mut shift = 0;
+            for end in ends {
+                while let Some((_, text)) = pending.next_if(|(index, _)| *index <= *end) {
+                    shift += text.len();
+                }
+                *end += shift;
+            }
+        }
+    }
+
     pub fn strip_cursor_linebreaks(&mut self) {
         let positions: Vec<_> = self
             .html
@@ -92,7 +123,7 @@ struct Boundaries<'a> {
     length: &'a Cell<usize>,
     ends: Vec<usize>,
     footnotes: bool,
-    mapping: Option<&'a crate::source_map::SourceMap>,
+    mapping: Option<&'a crate::source_map::SourceMap<'a>>,
     annotations: Vec<(usize, usize, String, bool)>,
 }
 
@@ -172,7 +203,7 @@ pub(crate) fn render<'a>(
     root: &'a AstNode<'a>,
     options: &Options<'_>,
     boundaries: bool,
-    mapping: Option<&crate::source_map::SourceMap>,
+    mapping: Option<&crate::source_map::SourceMap<'_>>,
 ) -> Output {
     // Literal HTML can span AST siblings or trigger browser tree repair. Only
     // whole-tree parsing preserves that context. Escaped raw HTML is safe but
@@ -219,14 +250,23 @@ pub(crate) fn render<'a>(
         html: writer.html,
         ends: independent.then_some(state.ends),
     };
-    for (start, end, attribute, atomic) in state.annotations.into_iter().rev() {
-        if let Some(index) = output.html[start..end].find(if atomic { "<span" } else { "<code" }) {
-            let name = if atomic { "atomic" } else { "source" };
-            output.insert(
-                start + index + 5,
-                &format!(" data-md-{name}=\"{attribute}\""),
-            );
-        }
-    }
+    let inserts = state
+        .annotations
+        .into_iter()
+        .filter_map(|(start, end, attribute, atomic)| {
+            let (tag, name) = if atomic {
+                ("<span", "atomic")
+            } else {
+                ("<code", "source")
+            };
+            // Insert right after the tag name, before its existing attributes.
+            let index = output.html[start..end].find(tag)?;
+            Some((
+                start + index + tag.len(),
+                format!(" data-md-{name}=\"{attribute}\""),
+            ))
+        })
+        .collect();
+    output.insert_all(inserts);
     output
 }

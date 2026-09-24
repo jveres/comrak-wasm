@@ -2,6 +2,8 @@ import initialize, {
 	__mdToHtmlWithCodefenceRenderersOwned,
 	__mdToHtmlWithPluginsOwned,
 	__mdToHtmlWithRewritersAndPluginsOwned,
+	CodefenceRenderer,
+	PreparedCodefenceRenderers as GeneratedPreparedCodefenceRenderers,
 	PreparedOptions as GeneratedPreparedOptions,
 	initSync as initializeSync,
 	mdToXml as renderXml,
@@ -12,7 +14,6 @@ export {
 	ansiThemeDark,
 	ansiThemeLight,
 	ansiToHtml,
-	CodefenceRenderer,
 	canonicalizeCommonmarkInline,
 	comrakVersion,
 	detectColorScheme,
@@ -34,7 +35,6 @@ export {
 	mdToText,
 	mdToXml,
 	PreparedAnsiTheme,
-	PreparedCodefenceRenderers,
 	SyntaxHighlighter,
 } from "./pkg/comrak.js";
 
@@ -46,6 +46,8 @@ export {
 /** @typedef {import("./types.d.ts").HeadingAdapter} HeadingAdapterHandle */
 /** @typedef {import("./types.d.ts").CodefenceRenderers} CodefenceRendererMap */
 /** @typedef {import("./types.d.ts").PreparedCodefenceRenderers} PreparedCodefenceRendererHandle */
+
+export { CodefenceRenderer };
 
 /** @type {Promise<InitOutput> | undefined} */
 let initializationPromise;
@@ -101,6 +103,33 @@ export function initSync(module) {
  */
 function cloneAdapter(adapter) {
 	return adapter == null ? undefined : adapter.clone();
+}
+
+/**
+ * The Rust side takes ownership of every CodefenceRenderer in a renderer
+ * map, so hand it clones and leave the caller's handles usable.
+ *
+ * @param {CodefenceRendererMap | null | undefined} renderers
+ * @returns {CodefenceRendererMap | null | undefined}
+ */
+function cloneCodefenceRenderers(renderers) {
+	if (renderers == null || typeof renderers !== "object") return renderers;
+	/** @type {CodefenceRendererMap | undefined} */
+	let cloned;
+	for (const [language, renderer] of Object.entries(renderers)) {
+		if (renderer instanceof CodefenceRenderer) {
+			cloned ??= { ...renderers };
+			cloned[language] = renderer.clone();
+		}
+	}
+	return cloned ?? renderers;
+}
+
+export class PreparedCodefenceRenderers extends GeneratedPreparedCodefenceRenderers {
+	/** @param {CodefenceRendererMap | null | undefined} [renderers] */
+	constructor(renderers) {
+		super(cloneCodefenceRenderers(renderers));
+	}
 }
 
 export class PreparedOptions extends GeneratedPreparedOptions {
@@ -196,16 +225,17 @@ export function mdToHtmlWithCodefenceRenderers(
 	return __mdToHtmlWithCodefenceRenderersOwned(
 		markdown,
 		options,
-		renderers,
+		cloneCodefenceRenderers(renderers),
 		cloneAdapter(syntaxHighlighter),
 		cloneAdapter(headingAdapter),
 	);
 }
 
 /**
- * The COMBINED entry: URL rewriters (security guards) together with
- * the render plugins — highlighter, heading adapter, per-language
- * codefence renderers. The disjoint entries forced hosts to choose.
+ * The COMBINED entry: URL rewriters together with the render plugins —
+ * highlighter, heading adapter, per-language codefence renderers. The
+ * disjoint entries forced hosts to choose. Rewriters fail open: a throw
+ * or a non-string return emits the original URL (see UrlRewriter).
  *
  * @param {string} markdown
  * @param {ComrakOptionsInput | null | undefined} options
@@ -232,6 +262,6 @@ export function mdToHtmlWithRewritersAndPlugins(
 		linkUrlRewriter,
 		cloneAdapter(syntaxHighlighter),
 		cloneAdapter(headingAdapter),
-		renderers,
+		cloneCodefenceRenderers(renderers),
 	);
 }

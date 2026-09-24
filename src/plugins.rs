@@ -11,6 +11,7 @@ use comrak::adapters::{
 use comrak::markdown_to_html_with_plugins;
 use comrak::options::Plugins;
 use js_sys::Function;
+use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -240,6 +241,16 @@ impl CodefenceRenderer {
     pub fn new(write_fn: Function) -> Self {
         Self { write_fn }
     }
+
+    /// A new handle over the same callback. index.js clones every
+    /// `CodefenceRenderer` in a renderer map before it crosses the
+    /// boundary, because the Rust side takes ownership of each entry.
+    #[wasm_bindgen(js_name = clone)]
+    pub fn clone_js(&self) -> Self {
+        Self {
+            write_fn: self.write_fn.clone(),
+        }
+    }
 }
 
 impl ComrakCodefenceRendererAdapter for CodefenceRenderer {
@@ -313,12 +324,28 @@ fn parse_codefence_renderers(
         let value = js_sys::Reflect::get(&object, &key_value).map_err(|_| {
             js_sys::TypeError::new(&format!("codefence renderer for {key:?} could not be read"))
         })?;
-        let function = value.dyn_into::<Function>().map_err(|_| {
-            js_sys::TypeError::new(&format!(
-                "codefence renderer for {key:?} must be a Function"
-            ))
-        })?;
-        codefence_renderers.push((key, CodefenceRenderer::new(function)));
+        // A wasm-bindgen handle's only own enumerable key is its pointer
+        // slot, so a handle passed where a plain map belongs (most often a
+        // PreparedCodefenceRenderers) lands here instead of on a language.
+        if key == "__wbg_ptr" {
+            return Err(js_sys::TypeError::new(
+                "codefence renderers must be a plain { [lang]: Function | CodefenceRenderer } \
+                 object; a PreparedCodefenceRenderers handle is only accepted by \
+                 PreparedOptions.mdToHtmlWithCodefenceRenderers",
+            )
+            .into());
+        }
+        let renderer = match value.dyn_into::<Function>() {
+            Ok(function) => CodefenceRenderer::new(function),
+            // Takes ownership of the handle: index.js passes clones, so the
+            // caller's CodefenceRenderer stays usable.
+            Err(value) => CodefenceRenderer::try_from_js_value(value).map_err(|_| {
+                js_sys::TypeError::new(&format!(
+                    "codefence renderer for {key:?} must be a Function or a CodefenceRenderer"
+                ))
+            })?,
+        };
+        codefence_renderers.push((key, renderer));
     }
     Ok(codefence_renderers)
 }
@@ -366,6 +393,8 @@ struct JsUrlRewriter {
 }
 
 impl comrak::options::URLRewriter for JsUrlRewriter {
+    /// Fails open by contract (README, types.d.ts `UrlRewriter`): a throw
+    /// or non-string return emits the original URL.
     fn to_html(&self, url: &str) -> String {
         let this = JsValue::null();
         let js_url = JsValue::from_str(url);

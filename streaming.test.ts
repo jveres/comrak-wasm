@@ -18,6 +18,16 @@ describe("streaming HTML", () => {
 		["a * b", `<p>a * b${cursor}</p>\n`],
 		["```\n**literal_\n", `<pre><code>**literal_\n${cursor}\n</code></pre>\n`],
 		["Use ``", `<p>Use <code>${cursor}</code></p>\n`],
+		["# Title *x\n", `<h1>Title *x</h1>${cursor}`],
+		["> a *b\n", `<blockquote>\n<p>a *b${cursor}</p>\n</blockquote>\n`],
+		[
+			"see https://x.com/_private",
+			`<p>see https://x.com/_private${cursor}</p>\n`,
+		],
+		[
+			"- ```js\n  code",
+			`<ul>\n<li>\n<pre><code class="language-js">code${cursor}\n</code></pre>\n</li>\n</ul>\n`,
+		],
 	])("renders %j without changing visible input", (source, expected) => {
 		expect(mdToStreamingHtml(source, source.length)).toBe(expected);
 	});

@@ -162,6 +162,41 @@
         font-size: 0.85rem;
         white-space: pre;
       }
+      /* Classes emitted by ansiToHtml (src/ansi_html.rs). Extended 256-color
+         and truecolor values arrive as inline color/background-color. */
+      #output.ansi .ansi-b { font-weight: bold; }
+      #output.ansi .ansi-d { opacity: 0.6; }
+      #output.ansi .ansi-i { font-style: italic; }
+      #output.ansi .ansi-u { text-decoration: underline; }
+      #output.ansi .ansi-s { text-decoration: line-through; }
+      #output.ansi .ansi-u.ansi-s { text-decoration: underline line-through; }
+      #output.ansi .ansi-inv { filter: invert(1); }
+      #output.ansi .ansi-solid { background-color: currentColor; }
+      #output.ansi [class*="ansi-bg-"] { padding: 1px 4px; }
+      #output.ansi .ansi[style*="background-color"] { border-radius: 3px; }
+      #output.ansi .ansi-fg-0, #output.ansi .ansi-fg-8 { color: #636c76; }
+      #output.ansi .ansi-fg-1 { color: #f85149; }
+      #output.ansi .ansi-fg-2 { color: #3fb950; }
+      #output.ansi .ansi-fg-3 { color: #d29922; }
+      #output.ansi .ansi-fg-4 { color: #58a6ff; }
+      #output.ansi .ansi-fg-5 { color: #bc8cff; }
+      #output.ansi .ansi-fg-6 { color: #39c5cf; }
+      #output.ansi .ansi-fg-7 { color: #b1bac4; }
+      #output.ansi .ansi-fg-9 { color: #ff7b72; }
+      #output.ansi .ansi-fg-10 { color: #7ee787; }
+      #output.ansi .ansi-fg-11 { color: #e3b341; }
+      #output.ansi .ansi-fg-12 { color: #79c0ff; }
+      #output.ansi .ansi-fg-13 { color: #d2a8ff; }
+      #output.ansi .ansi-fg-14 { color: #56d4dd; }
+      #output.ansi .ansi-fg-15 { color: #f0f6fc; }
+      #output.ansi .ansi-bg-0, #output.ansi .ansi-bg-8 { background-color: #636c76; }
+      #output.ansi .ansi-bg-1, #output.ansi .ansi-bg-9 { background-color: #f85149; }
+      #output.ansi .ansi-bg-2, #output.ansi .ansi-bg-10 { background-color: #3fb950; }
+      #output.ansi .ansi-bg-3, #output.ansi .ansi-bg-11 { background-color: #d29922; }
+      #output.ansi .ansi-bg-4, #output.ansi .ansi-bg-12 { background-color: #58a6ff; }
+      #output.ansi .ansi-bg-5, #output.ansi .ansi-bg-13 { background-color: #bc8cff; }
+      #output.ansi .ansi-bg-6, #output.ansi .ansi-bg-14 { background-color: #39c5cf; }
+      #output.ansi .ansi-bg-7, #output.ansi .ansi-bg-15 { background-color: #d0d7de; }
       #output.preview h1,
       #output.preview h2,
       #output.preview h3 {

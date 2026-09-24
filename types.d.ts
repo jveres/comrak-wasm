@@ -347,9 +347,22 @@ export type CodefenceRendererCallback = (
 	code: string,
 ) => string;
 
-export type CodefenceRenderers = Record<string, CodefenceRendererCallback>;
+/**
+ * Per-language code-fence renderers: a plain object keyed by fence language.
+ * Each value is a callback or a {@link CodefenceRenderer} handle. Handles are
+ * cloned on the way in, so the caller still owns (and frees) the original.
+ */
+export type CodefenceRenderers = Record<
+	string,
+	CodefenceRendererCallback | CodefenceRenderer
+>;
 
-/** Code-fence renderer registrations validated once for repeated renders. */
+/**
+ * Code-fence renderer registrations validated once for repeated renders.
+ * Only {@link PreparedOptions.mdToHtmlWithCodefenceRenderers} accepts this
+ * handle; the top-level functions take a plain {@link CodefenceRenderers}
+ * object and throw a `TypeError` when given a prepared handle.
+ */
 export class PreparedCodefenceRenderers {
 	constructor(renderers?: CodefenceRenderers | null);
 	free(): void;
@@ -357,13 +370,13 @@ export class PreparedCodefenceRenderers {
 }
 
 /**
- * Low-level renderer wrapper exported by the WASM module. Most callers don't
- * construct this directly — pass a plain
- * `{ [lang]: (lang, meta, code) => string }` object as the `renderers` argument
- * of {@link mdToHtmlWithCodefenceRenderers}.
+ * Wraps one {@link CodefenceRendererCallback} in a WASM handle. It is
+ * accepted as a value in a {@link CodefenceRenderers} object, next to plain
+ * callbacks. Most callers pass the callback directly instead.
  */
 export class CodefenceRenderer {
 	constructor(write: CodefenceRendererCallback);
+	clone(): CodefenceRenderer;
 	free(): void;
 	[Symbol.dispose](): void;
 }
@@ -376,6 +389,20 @@ export function mdToHtmlWithCodefenceRenderers(
 	headingAdapter?: HeadingAdapter | null,
 ): string;
 
+/**
+ * Rewrites one link or image URL before it is written to HTML.
+ *
+ * **Fails open.** If the callback throws, or returns anything other than a
+ * string, the error is swallowed and the ORIGINAL, unrewritten URL is
+ * emitted. A rewriter used as a security guard (for example, to block
+ * `javascript:` URLs or untrusted hosts) must therefore never throw to
+ * reject a URL: catch errors inside the callback and return a safe
+ * replacement string such as `""` or `"#"`.
+ *
+ * With `render.unsafe` off, comrak drops dangerous source URLs
+ * (`javascript:`, `vbscript:`, `file:`, most `data:`) before the rewriter
+ * runs. The rewriter's return value is only href-escaped, not re-checked.
+ */
 export type UrlRewriter = (url: string) => string;
 
 export function mdToHtmlWithRewriters(
@@ -386,9 +413,10 @@ export function mdToHtmlWithRewriters(
 ): string;
 
 /**
- * The COMBINED entry: URL rewriters (security guards) together with the
- * render plugins — highlighter, heading adapter, per-language codefence
- * renderers.
+ * The COMBINED entry: URL rewriters together with the render plugins —
+ * highlighter, heading adapter, per-language codefence renderers. The
+ * rewriters fail open; see {@link UrlRewriter} before using them as a
+ * security guard.
  */
 export function mdToHtmlWithRewritersAndPlugins(
 	md: string,
@@ -443,7 +471,7 @@ export interface AnsiTheme {
 export function mdToAnsi(
 	md: string,
 	options?: ComrakOptions | null,
-	theme?: AnsiTheme,
+	theme?: AnsiTheme | null,
 ): string;
 
 /** ANSI theme validated and merged once for repeated renders. */
@@ -519,12 +547,12 @@ export function ansiToHtml(
 ): { html: string; sourceMap?: string };
 export function mdToHtmlBlocks(
 	markdown: string,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	sourceMap?: boolean,
 ): HtmlBlockSnapshot;
 export function mdToStreamingHtmlBlocks(
 	markdown: string,
 	writingOffset: number,
-	options?: ComrakOptions,
+	options?: ComrakOptions | null,
 	sourceMap?: boolean,
 ): HtmlBlockSnapshot;

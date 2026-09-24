@@ -126,3 +126,29 @@ describe("ANSI input to HTML", () => {
 		);
 	});
 });
+
+describe("ANSI input to HTML: non-SGR escapes", () => {
+	it.each([
+		[
+			"\u001b[31mred\u001b(B\u001b[m plain",
+			'<span class="ansi ansi-fg-1">red</span> plain',
+		],
+		["a\u001b[>0cb", "ab"],
+		["a\u001b[>4;2mb", "ab"],
+		["a\u001b[?25lb", "ab"],
+		["a\u001b7b\u001b8c", "abc"],
+		["a\u001b\u0001b", "a\u0001b"],
+		["a\u001b", "a"],
+	])("should drop escapes in %j without leaking ESC", (input, html) => {
+		const out = ansiToHtml(input).html;
+		expect(out).toBe(html);
+		expect(out).not.toContain("\u001b");
+	});
+
+	it("should map text around dropped charset escapes", () => {
+		const code = "ab\u001b(Bcd";
+		expect(
+			ansiToHtml(code, false, `0,${code.length},${code.length},1`),
+		).toEqual({ html: "abcd", sourceMap: "0,2,2,1;5,7,2,1" });
+	});
+});

@@ -4,6 +4,12 @@
 export class CodefenceRenderer {
     free(): void;
     [Symbol.dispose](): void;
+    /**
+     * A new handle over the same callback. index.js clones every
+     * `CodefenceRenderer` in a renderer map before it crosses the
+     * boundary, because the Rust side takes ownership of each entry.
+     */
+    clone(): CodefenceRenderer;
     constructor(write_fn: Function);
 }
 
@@ -40,8 +46,8 @@ export class PreparedOptions {
     __mdToHtmlWithCodefenceRenderersOwned(md: string, renderers: PreparedCodefenceRenderers, syntax_highlighter?: SyntaxHighlighter | null, heading_adapter?: HeadingAdapter | null): string;
     __mdToHtmlWithPluginsOwned(md: string, syntax_highlighter?: SyntaxHighlighter | null, heading_adapter?: HeadingAdapter | null): string;
     getFrontmatter(md: string): string | undefined;
-    mdToAnsi(md: string, theme: any): string;
     mdToAnsiWithTheme(md: string, theme: PreparedAnsiTheme): string;
+    mdToAnsi(md: string, theme: any): string;
     mdToCommonmark(md: string): string;
     mdToHtml(md: string): string;
     mdToText(md: string, show_urls?: boolean | null, show_markdown?: boolean | null, table_shadow?: string | null): string;
@@ -185,6 +191,7 @@ export interface InitOutput {
     readonly ansiThemeLight: () => any;
     readonly ansiToHtml: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly canonicalizeCommonmarkInline: (a: number, b: number, c: any) => [number, number, number, number];
+    readonly codefencerenderer_clone: (a: number) => number;
     readonly codefencerenderer_new: (a: any) => number;
     readonly comrakVersion: () => [number, number];
     readonly detectColorScheme: (a: number, b: number) => [number, number];

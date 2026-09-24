@@ -15,6 +15,7 @@ export const ansiThemeDark: () => any;
 export const ansiThemeLight: () => any;
 export const ansiToHtml: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
 export const canonicalizeCommonmarkInline: (a: number, b: number, c: any) => [number, number, number, number];
+export const codefencerenderer_clone: (a: number) => number;
 export const codefencerenderer_new: (a: any) => number;
 export const comrakVersion: () => [number, number];
 export const detectColorScheme: (a: number, b: number) => [number, number];

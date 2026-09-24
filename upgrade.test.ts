@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
 	type AstNode,
@@ -162,7 +163,9 @@ it.each(["emails", "parentheses", "brackets", "braces"])(
 		const { stdout } = await execFileAsync(
 			process.execPath,
 			[
-				new URL("./scripts/autolink-worker.mjs", import.meta.url).pathname,
+				fileURLToPath(
+					new URL("./scripts/autolink-worker.mjs", import.meta.url),
+				),
 				kind,
 			],
 			{ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 },

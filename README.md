@@ -261,6 +261,9 @@ try {
 
 Adapters retain JavaScript callbacks in Wasm. Call `free()` after the last use,
 or use `Symbol.dispose` in runtimes that support explicit resource management.
+Choose one of the two for each handle. A `using` declaration already calls
+`free()` at scope exit, so an extra manual `free()` frees the handle twice and
+throws.
 
 The playground loads its Shiki renderer only when syntax highlighting is
 enabled, so highlighting code is absent from the initial JavaScript path.
@@ -295,8 +298,26 @@ const html = mdToHtmlWithCodefenceRenderers(markdown, options, {
 });
 ```
 
+A value in the registry can also be a `CodefenceRenderer` handle. The call
+clones the handle, so you still own the original and must free it.
+
+```typescript
+import { CodefenceRenderer, mdToHtmlWithCodefenceRenderers } from "comrak-wasm";
+
+const mermaid = new CodefenceRenderer(
+  (_lang, _meta, code) => `<div class="mermaid">${escapeHtml(code)}</div>`,
+);
+try {
+  const html = mdToHtmlWithCodefenceRenderers(markdown, options, { mermaid });
+} finally {
+  mermaid.free();
+}
+```
+
 For repeated renders, validate the registry once and use it with prepared
-options.
+options. Only `PreparedOptions.mdToHtmlWithCodefenceRenderers` accepts a
+`PreparedCodefenceRenderers` handle. The top-level functions take a plain
+registry object and throw a `TypeError` if you pass them a prepared handle.
 
 ```typescript
 import { PreparedCodefenceRenderers, PreparedOptions } from "comrak-wasm";
@@ -330,6 +351,26 @@ const html = mdToHtmlWithRewriters(
   (url) => `https://links.example/redirect?url=${encodeURIComponent(url)}`,
 );
 ```
+
+URL rewriters **fail open**. If a rewriter throws, or returns a value that is
+not a string, the error is ignored and the original, unrewritten URL goes into
+the HTML. Do not throw to reject a URL. If you use a rewriter as a security
+guard (for example, an allowlist of hosts), catch every error inside the
+callback and return a safe string such as `""` or `"#"`:
+
+```typescript
+const allowLink = (url: string) => {
+  try {
+    return new URL(url).hostname.endsWith(".example") ? url : "#";
+  } catch {
+    return "#"; // Relative or malformed URL: replace it, do not throw.
+  }
+};
+```
+
+With `render.unsafe` off, comrak removes dangerous source URLs such as
+`javascript:` before the rewriter runs. The string that the rewriter returns is
+only escaped for the `href`/`src` attribute. It is not checked again.
 
 ### Broken link callback
 
@@ -495,6 +536,13 @@ const html = mdToHtml(healMarkdown(streamChunk), options);
 
 The healer covers code fences, inline code, bold, italic, strikethrough, links,
 images, block math, setext headings, and incomplete HTML tags.
+
+Healing follows Markdown context. Delimiters inside code spans, list bullets,
+thematic breaks, link destinations, and bare URLs stay literal, so
+``use `**kwargs` `` and `* item` are left alone. Code fences inside
+blockquotes and list items are closed inside their container. A `<` right after
+a letter or digit, as in `a<b`, is treated as a comparison, not as the start of a
+tag.
 
 ### Render with a writing cursor
 

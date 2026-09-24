@@ -64,8 +64,8 @@ impl AnsiTheme {
         }
     }
 
-    /// Light theme — differs from dark for elements that use 256-color
-    /// palette (inline code background, blockquote border).
+    /// Light theme — differs from dark only in the 256-color inline code
+    /// colors; every other style is shared with the dark theme.
     pub fn light() -> Self {
         Self {
             code: Some("\x1b[48;5;254m\x1b[38;5;124m".into()),
@@ -105,8 +105,8 @@ impl AnsiTheme {
             reset: merge!(reset),
             show_urls: merge!(show_urls),
             show_markdown: merge!(show_markdown),
-            table_shadow: self.table_shadow,
-            hyperlinks: self.hyperlinks,
+            table_shadow: merge!(table_shadow),
+            hyperlinks: merge!(hyperlinks),
         }
     }
 
@@ -147,6 +147,17 @@ impl Default for AnsiTheme {
 
 struct AnsiFormatter<'a> {
     theme: &'a AnsiTheme,
+}
+
+impl AnsiFormatter<'_> {
+    /// OSC 8 hyperlinks are emitted only when enabled, the URL is non-empty,
+    /// and ANSI output is not disabled via an empty reset. Shared by
+    /// link_start and link_end so opener and closer always pair up.
+    fn hyperlinks_enabled(&self, url: &str) -> bool {
+        self.theme.hyperlinks.unwrap_or(false)
+            && !url.is_empty()
+            && !self.theme.g("reset").is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -261,10 +272,7 @@ impl Formatter for AnsiFormatter<'_> {
 
     // OSC 8 hyperlinks — clickable links in supported terminals
     fn link_start(&self, out: &mut String, url: &str) {
-        if self.theme.hyperlinks.unwrap_or(false)
-            && !url.is_empty()
-            && !self.theme.g("reset").is_empty()
-        {
+        if self.hyperlinks_enabled(url) {
             out.push_str("\x1b]8;;");
             self.write_literal(out, url);
             out.push_str("\x1b\\");
@@ -273,7 +281,7 @@ impl Formatter for AnsiFormatter<'_> {
     }
     fn link_end(&self, out: &mut String, url: &str) {
         self.style_end(out, "link");
-        if self.theme.hyperlinks.unwrap_or(false) && !url.is_empty() {
+        if self.hyperlinks_enabled(url) {
             out.push_str("\x1b]8;;\x1b\\");
         }
         if self.show_urls() && !url.is_empty() {
@@ -311,11 +319,17 @@ impl Formatter for AnsiFormatter<'_> {
             .title
             .as_deref()
             .unwrap_or(alert.alert_type.default_title());
-        out.push_str(bg);
+        // An empty reset disables ANSI output; emit an unstyled badge then.
+        let styled = !self.theme.g("reset").is_empty();
+        if styled {
+            out.push_str(bg);
+        }
         out.push(' ');
         self.write_literal(out, title);
         out.push(' ');
-        self.reset(out);
+        if styled {
+            self.reset(out);
+        }
     }
 
     fn table_shadow_char(&self) -> Option<&str> {

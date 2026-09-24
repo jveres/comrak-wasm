@@ -19,11 +19,6 @@ use wasm_bindgen::prelude::*;
 #[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
 compile_error!("comrak-wasm does not support threaded Wasm; build without target_feature=atomics");
 
-#[cfg(all(target_arch = "wasm32", not(target_feature = "atomics")))]
-#[global_allocator]
-static ALLOCATOR: lol_alloc::AssumeSingleThreaded<lol_alloc::FreeListAllocator> =
-    unsafe { lol_alloc::AssumeSingleThreaded::new(lol_alloc::FreeListAllocator::new()) };
-
 #[wasm_bindgen(js_name = comrakVersion)]
 pub fn comrak_version() -> String {
     comrak::version().to_string()
@@ -111,9 +106,14 @@ pub fn md_to_inline_html(md: &str, options: JsValue) -> Result<String, JsValue> 
     let mut html = String::new();
     comrak::format_html(root, &options, &mut html)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    // The opening tag carries `data-sourcepos` when `render.sourcepos` is on.
     let inner = html
         .trim()
-        .strip_prefix("<p>")
+        .strip_prefix("<p")
+        .and_then(|rest| rest.split_once('>'))
+        .and_then(|(attributes, rest)| {
+            (attributes.is_empty() || attributes.starts_with(' ')).then_some(rest)
+        })
         .and_then(|rest| rest.strip_suffix("</p>"))
         .ok_or_else(|| JsValue::from_str(NOT_ONE_PARAGRAPH))?;
     Ok(inner.replace("<br />", "<br>"))
@@ -130,6 +130,7 @@ pub fn md_to_ast(md: &str, options: JsValue) -> Result<JsValue, JsValue> {
     let options = options::from_js(Some(options))?;
     let arena = Arena::new();
     let root = parse_document(&arena, md, &options);
+    ensure_nesting_depth(root, "AST")?;
     ast::to_js(&ast::json_of(root))
 }
 
@@ -255,7 +256,7 @@ fn render_text(
 ) -> Result<String, JsValue> {
     let arena = Arena::new();
     let root = parse_document(&arena, md, options);
-    ensure_walker_depth(root)?;
+    ensure_nesting_depth(root, "text/ANSI")?;
     let shadow = match table_shadow {
         Some(shadow) => validate_table_shadow(shadow)?,
         None => Some("░".into()),
@@ -318,7 +319,7 @@ fn render_ansi_prepared(
 ) -> Result<String, JsValue> {
     let arena = Arena::new();
     let root = parse_document(&arena, md, options);
-    ensure_walker_depth(root)?;
+    ensure_nesting_depth(root, "text/ANSI")?;
     Ok(ansi::format_ansi_prepared(root, theme))
 }
 
@@ -360,12 +361,14 @@ pub fn md_to_ansi_with_theme(
     render_ansi_prepared(md, &options, &theme.theme)
 }
 
-fn ensure_walker_depth<'a>(root: &'a walker::AstNode<'a>) -> Result<(), JsValue> {
+/// Recursive outputs reject deep trees before they can exhaust the Wasm
+/// stack, which would leave the module unusable for later calls.
+fn ensure_nesting_depth<'a>(root: &'a walker::AstNode<'a>, output: &str) -> Result<(), JsValue> {
     if walker::nesting_within_limit(root) {
         Ok(())
     } else {
         Err(js_sys::RangeError::new(&format!(
-            "markdown nesting exceeds the text/ANSI limit of {}",
+            "markdown nesting exceeds the {output} limit of {}",
             walker::MAX_NESTING_DEPTH
         ))
         .into())
