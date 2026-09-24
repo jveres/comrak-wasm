@@ -4,6 +4,7 @@ import {
 	ansiThemeAuto,
 	ansiThemeDark,
 	ansiThemeLight,
+	ansiToHtml,
 	canonicalizeCommonmarkInline,
 	comrakVersion,
 	detectColorScheme,
@@ -93,6 +94,26 @@ describe("playground feature fixture", () => {
 		expect(Object.keys(extensionFeatureCoverage)).toHaveLength(35);
 		expect(Object.keys(parseFeatureCoverage)).toHaveLength(10);
 		expect(Object.keys(renderFeatureCoverage)).toHaveLength(18);
+	});
+
+	test("renders the playground sample in every playground output format", async () => {
+		const markdown = await readFile(
+			new URL("./examples/playground/sample.md", import.meta.url),
+			"utf8",
+		);
+		const options = createPlaygroundOptions(true, "trusted", "url-first");
+
+		for (const showMarkdown of [false, true]) {
+			const text = mdToText(markdown, options, true, showMarkdown, "░");
+			const theme = { ...ansiThemeDark(), showMarkdown, tableShadow: "░" };
+			const ansi = mdToAnsi(markdown, options, theme);
+
+			// The sample puts task items in table cells (`parse.tasklistInTable`).
+			expect(text).toContain(showMarkdown ? "[x]" : "☒");
+			expect(ansiToHtml(ansi).html).toContain(showMarkdown ? "[x]" : "☒");
+		}
+		expect(mdToXml(markdown, options)).toContain("<document");
+		expect(mdToHtml(markdown, options)).toContain("<table");
 	});
 
 	test("exercises the complete compatible feature profile", async () => {

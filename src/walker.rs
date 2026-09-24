@@ -479,6 +479,21 @@ fn walk_inline<'a, F: Formatter>(
 
 fn render_cell_styled<'a, F: Formatter>(cell_node: &'a AstNode<'a>, out: &mut String, fmt: &F) {
     for child in cell_node.children() {
+        // `parse.tasklistInTable` puts a block-level task item in the cell.
+        if let NodeValue::TaskItem(task) = &child.data.borrow().value {
+            let checked = task.symbol.is_some();
+            out.push_str(match (fmt.show_markdown(), checked) {
+                (true, true) => "[x]",
+                (true, false) => "[ ]",
+                (false, true) => "☒",
+                (false, false) => "☐",
+            });
+            if child.children().next().is_some() {
+                out.push(' ');
+                render_cell_styled(child, out, fmt);
+            }
+            continue;
+        }
         walk_inline(child, out, None, fmt);
     }
 }
@@ -900,6 +915,23 @@ mod tests {
         o.extension.underline = true;
         o.extension.description_lists = true;
         o
+    }
+
+    #[test]
+    fn tasklist_items_in_table_cells_render() {
+        let mut options = opts();
+        options.parse.tasklist_in_table = true;
+        let md = "| Task |\n| --- |\n| [ ] |\n| [x] |";
+        let arena = Arena::new();
+        let root = parse_document(&arena, md, &options);
+        let text = format_text(root, false, false, None);
+        assert!(text.contains("☐") && text.contains("☒"), "{text:?}");
+        let markdown = format_text(root, false, true, None);
+        assert!(
+            markdown.contains("[ ]") && markdown.contains("[x]"),
+            "{markdown:?}"
+        );
+        assert!(format_ansi(root, Some(AnsiTheme::dark())).contains("☒"));
     }
 
     #[test]
