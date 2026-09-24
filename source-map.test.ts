@@ -137,4 +137,16 @@ describe("lexical source mappings", () => {
 			'<code data-md-source="4,8,4,1;8,9,1,0;11,15,4,1">code next</code>',
 		);
 	});
+	it("should keep mapping tab-indented code in a streaming list fence", () => {
+		const source = "Before \n\n- item\n\n  ```\n\tcode\n  `";
+		const { html } = mdToStreamingHtmlBlocks(
+			source,
+			source.length,
+			options,
+			true,
+		);
+
+		// The partial closer is code, not an inline code span to heal.
+		expect(html).toMatch(/<code data-md-source="[^"]*">\s*code\n`/);
+	});
 });

@@ -41,7 +41,7 @@ dependencies = [
 
 [[package]]
 name = "comrak-wasm"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "comrak",
  "js-sys",

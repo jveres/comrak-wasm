@@ -186,7 +186,7 @@ fn analyze(s: &str) -> Structure {
         }
 
         let line = Line::new(bytes, line_start, line_end, usize::MAX);
-        let (content, first, indent) = (line.content, line.first, line.indent);
+        let (first, indent) = (line.first, line.indent);
         if line.is_blank(bytes) {
             if let Some(start) = paragraph.take() {
                 pair_code_spans(
@@ -203,6 +203,7 @@ fn analyze(s: &str) -> Structure {
 
         let text = &bytes[first..line_end];
         let mut fence_start = None;
+        let mut fence_column = indent;
         let mut container = 0;
         let mut single_line_block = false;
         if indent <= 3 && paragraph.is_some() && is_setext_underline(text) {
@@ -233,12 +234,15 @@ fn analyze(s: &str) -> Structure {
             if bytes[first] == b'*' {
                 structure.markers.push(first..marker_end);
             }
-            if (1..=4).contains(&spaces) {
-                list_column = marker_end + spaces - content;
+            let marker_column = indent + (marker_end - first);
+            let gap = columns(&bytes[marker_end..marker_end + spaces], marker_column);
+            if (1..=4).contains(&gap) {
+                list_column = marker_column + gap;
                 fence_start = Some(marker_end + spaces);
+                fence_column = list_column;
                 container = list_column;
             } else {
-                list_column = marker_end + 1 - content;
+                list_column = marker_column + 1;
             }
         } else {
             if previous_blank && indent < list_column {
@@ -267,7 +271,7 @@ fn analyze(s: &str) -> Structure {
             structure.open_fence = Some(Fence {
                 marker: bytes[start],
                 length: run_length(bytes, start),
-                column: start - content,
+                column: fence_column,
                 container,
                 quote_depth: line.quote_depth,
                 start,
@@ -302,10 +306,9 @@ fn analyze(s: &str) -> Structure {
 
 /// A line split into its blockquote prefix and indented content.
 struct Line {
-    /// Content start after blockquote markers.
-    content: usize,
-    /// First non-space byte after `content`.
+    /// First byte after blockquote markers and indentation.
     first: usize,
+    /// Indentation in columns, with tabs expanded.
     indent: usize,
     quote_depth: usize,
     end: usize,
@@ -334,12 +337,11 @@ impl Line {
         let first = content
             + bytes[content..end]
                 .iter()
-                .take_while(|byte| **byte == b' ')
+                .take_while(|byte| matches!(**byte, b' ' | b'\t'))
                 .count();
         Self {
-            content,
             first,
-            indent: first - content,
+            indent: columns(&bytes[content..first], 0),
             quote_depth,
             end,
         }
@@ -350,6 +352,18 @@ impl Line {
             .iter()
             .all(|byte| byte.is_ascii_whitespace())
     }
+}
+
+/// Width of leading spaces and tabs starting at `column`; tabs stop at
+/// multiples of four, as in CommonMark.
+fn columns(whitespace: &[u8], column: usize) -> usize {
+    whitespace.iter().fold(column, |column, byte| {
+        if *byte == b'\t' {
+            column + 4 - column % 4
+        } else {
+            column + 1
+        }
+    }) - column
 }
 
 fn is_atx_heading(text: &[u8]) -> bool {
@@ -1467,6 +1481,18 @@ mod tests {
         assert_eq!(heal_markdown("# `a\n*b `c"), "# `a\n*b `c`*");
         assert_eq!(heal_markdown("- `a\n- *b `c"), "- `a\n- *b `c`*");
         assert_eq!(heal_markdown("a `b\n---\n**c"), "a `b\n---\n**c**");
+    }
+    #[test]
+    fn tabs_indent_to_four_column_stops() {
+        // A tab-indented line stays inside the list item's fence.
+        let fenced = "- item\n\n  ```\n\tcode\n  `";
+        assert!(unclosed_fence(fenced).is_some());
+        assert_eq!(heal_markdown(fenced), format!("{fenced}\n  ```"));
+        // A tab after the marker puts the content, and the closer, at column 4.
+        assert_eq!(
+            heal_markdown("-\t```js\n\tcode"),
+            "-\t```js\n\tcode\n    ```"
+        );
     }
     #[test]
     fn fences_end_with_their_container() {
