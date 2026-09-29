@@ -635,6 +635,9 @@ fn unclosed_fence(s: &str) -> Option<Fence> {
 }
 
 pub(crate) fn unclosed_inline_code(s: &str) -> Option<(usize, usize)> {
+    if !s.contains('`') {
+        return None;
+    }
     analyze(s).unclosed_span
 }
 
@@ -712,7 +715,8 @@ fn heal_inline_markup(buf: &mut String) {
     // spans go first and math second: emphasis closers must land after
     // them rather than inside an open span or display block. Each healer
     // scans the text again because the one before it may have appended a
-    // closer that changes code spans or markers.
+    // closer that changes code spans or markers. Each healer rejects absent
+    // delimiters before allocating and scanning structural ranges.
     for _ in 0..8 {
         let original_len = buf.len();
         heal_inline_code(buf);
@@ -848,6 +852,9 @@ fn heal_setext(buf: &mut String) {
 }
 
 fn heal_links(buf: &mut String, preserve_markers: bool) {
+    if !buf.contains('[') && !buf.contains("](") {
+        return;
+    }
     // Find unmatched [ or ![ and the last link destination outside code.
     // Track escape parity inline; calling is_escaped per byte would be
     // O(n^2) on backslash-heavy input.
@@ -924,6 +931,9 @@ fn heal_links(buf: &mut String, preserve_markers: bool) {
 }
 
 fn heal_paired_delimiter(buf: &mut String, delimiter: &str) {
+    if !buf.contains(delimiter) {
+        return;
+    }
     let Some(literal) = literal_ranges(buf, &analyze(buf)) else {
         return;
     };
@@ -942,6 +952,9 @@ fn heal_paired_delimiter(buf: &mut String, delimiter: &str) {
 /// Count single emphasis markers that are not word-internal. Odd runs leave
 /// one single marker once their doubled markers pair up.
 fn single_marker_stats(buf: &str, marker: u8) -> (usize, Option<usize>) {
+    if !buf.as_bytes().contains(&marker) {
+        return (0, None);
+    }
     let Some(literal) = literal_ranges(buf, &analyze(buf)) else {
         return (0, None);
     };
@@ -986,6 +999,9 @@ fn heal_single_marker(buf: &mut String, marker: u8) {
 }
 
 fn heal_inline_code(buf: &mut String) {
+    if !buf.contains('`') {
+        return;
+    }
     let structure = analyze(buf);
     if structure.open_fence.is_some() {
         return;
@@ -1010,6 +1026,9 @@ fn heal_inline_code(buf: &mut String) {
 }
 
 fn heal_math(buf: &mut String) {
+    if !buf.contains("$$") {
+        return;
+    }
     let (count, last_end) = delimiter_stats(buf, "$$", analyze(buf).closed_code());
     if count % 2 == 1 && has_meaningful_content_after(buf, last_end) {
         // If ends with single $, just append one more
@@ -1044,6 +1063,35 @@ fn heal_code_block(buf: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streaming_healing_preserves_plain_unicode_and_literal_markers() {
+        for source in [
+            "Plain words and 日本語 😀",
+            "Price $20, path a_b, a ~ b, and unmatched ] text",
+            "# Heading\n\n- A plain item\n- Another item",
+            "A paragraph\nwith wrapped lines\n\nThe final paragraph",
+            "Escaped \\*marker and \\[bracket",
+        ] {
+            assert_eq!(heal_streaming(source), source, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn streaming_healing_keeps_partial_destinations_without_an_open_bracket() {
+        for (source, expected) in [
+            ("](https://example.test", "](https://example.test)"),
+            (
+                "[label](https://example.test",
+                "[label](https://example.test)",
+            ),
+            ("Use `inline", "Use `inline`"),
+            ("**bold*", "**bold**"),
+            ("$$x", "$$x\n$$"),
+        ] {
+            assert_eq!(heal_streaming(source), expected, "{source:?}");
+        }
+    }
 
     // --- Bold ---
     #[test]

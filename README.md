@@ -13,7 +13,7 @@ The package is not published to npm. Install it from GitHub; the built Wasm
 artifact is committed, so consumers do not need a Rust toolchain.
 
 ```bash
-pnpm add github:jveres/comrak-wasm
+pnpm add github:jveres/comrak-wasm#v0.6.2
 ```
 
 To work on the repository itself, see [Development](#development).
@@ -687,6 +687,12 @@ pnpm run check
 pnpm run build:playground
 pnpm run bench
 ```
+
+For a focused streaming-parser comparison, run
+`node bench/streaming-heal.mjs` after building. It reports three timed samples,
+source and output hashes, and Wasm memory pages for deterministic prefix
+workloads. See the [v0.6.2 performance note](docs/streaming-healing-2026-09-29.md)
+for the measured improvement and its limits.
 
 The repository tracks both `pnpm-lock.yaml` and `Cargo.lock`. The pnpm workspace
 also includes the Shiki example, so one root install prepares all packages.
